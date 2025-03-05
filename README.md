@@ -14,6 +14,7 @@ A command-line utility for interacting with VHI (Virtuozzo Hybrid Infrastructure
 - Network and port management
 - Image management and sharing
 - VM migration from VMware environments
+- Templating support for cloud-init scripts and bash scripts
 
 ## Build & Installation
 
@@ -118,6 +119,17 @@ vhicmd create vm --name <name> \
   --macaddr <mac-addresses>
 ```
 
+With templates:
+```bash
+vhicmd create vm --name <name> \
+  --flavor <flavor-id> \
+  --image <image-id> \
+  --networks <network-ids> \
+  --ips <ip-addresses> \
+  --user-data <template-file> \
+  --ci-data "key:value,key:value"
+```
+
 Delete VM:
 ```bash
 vhicmd delete vm <vm-id>
@@ -152,6 +164,61 @@ Network interfaces:
 ```bash
 vhicmd update vm attach-port <vm-id> <port-id>
 vhicmd update vm detach-port <vm-id> <port-id>
+```
+
+### Template Support
+
+Validate template:
+```bash
+vhicmd validate <template-file> --ci-data "key:value,key:value" [--preview]
+```
+
+#### Bash Script Template Example
+
+```bash
+#!/bin/bash
+# Set hostname and create user
+hostnamectl set-hostname {{%hostname%}}
+useradd -m -s /bin/bash {{%username%}}
+echo "{{%username%}} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/{{%username%}}
+
+# Configure SSH key
+mkdir -p /home/{{%username%}}/.ssh
+echo "{{%ssh_key%}}" > /home/{{%username%}}/.ssh/authorized_keys
+chmod 700 /home/{{%username%}}/.ssh
+chmod 600 /home/{{%username%}}/.ssh/authorized_keys
+chown -R {{%username%}}:{{%username%}} /home/{{%username%}}/.ssh
+```
+
+Deploy with:
+```bash
+vhicmd create vm --name server1 --flavor medium --image ubuntu-22.04 \
+  --networks net1 --ips 10.0.0.5 --user-data template.sh \
+  --ci-data "hostname:server1,username:admin,ssh_key:\"ssh-rsa AAAA...\""
+```
+
+#### Cloud-Init YAML Template Example
+
+```yaml
+#cloud-config
+hostname: {{%hostname%}}
+users:
+  - name: {{%username%}}
+    ssh_authorized_keys:
+      - {{%ssh_key%}}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+
+package_update: true
+packages:
+  - {{%packages%}}
+```
+
+Deploy with:
+```bash
+vhicmd create vm --name web1 --flavor medium --image ubuntu-22.04 \
+  --networks net1 --ips 10.0.0.6 --user-data template.yaml \
+  --ci-data "hostname:web1,username:admin,ssh_key:\"ssh-rsa AAAA...\",packages:\"nginx curl\""
 ```
 
 ### Storage Management
@@ -239,3 +306,5 @@ vhicmd migrate find <pattern> [--single]
 
 - Most commands accept either resource IDs or names
 - `vhicmd` supports networks with IPAM disabled which allows manually specifying MAC addresses as a normal user when creating a port
+- When using templates, all variables in the template must be provided in the ci-data parameter
+- Template validation strictly enforces that all variables are accounted for
