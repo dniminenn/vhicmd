@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jessegalley/vhicmd/api"
+	"github.com/jessegalley/vhicmd/internal/template"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -124,6 +125,11 @@ var createVMCmd = &cobra.Command{
 			volumeSize = flagVMSize
 		}
 
+		// If ci-data is provided, user-data is required
+		if flagCIData != "" && flagUserData == "" {
+			return fmt.Errorf("--ci-data requires --user-data to be specified")
+		}
+
 		// Create initial VM request
 		var request api.CreateVMRequest
 		request.Server.Name = flagVMName
@@ -161,10 +167,57 @@ var createVMCmd = &cobra.Command{
 			// cloud-init script
 			// VHI calls this user_data, just b64 encoded cloud-init script
 			if flagUserData != "" {
-				userData, err := readAndEncodeUserData(flagUserData)
-				if err != nil {
-					return err
+				var userData string
+
+				// Check if we have template variables to apply
+				if flagCIData != "" {
+					// Parse the ci-data key-value pairs
+					ciData, err := template.ParseKeyValueString(flagCIData)
+					if err != nil {
+						return fmt.Errorf("error parsing ci-data: %v", err)
+					}
+
+					// Read the template file
+					rawUserData, err := readUserDataFile(flagUserData)
+					if err != nil {
+						return err
+					}
+
+					// Validate template before processing
+					validation := template.ValidateTemplate(rawUserData, ciData)
+
+					// Check for missing variables (this is an error)
+					if !validation.Valid {
+						return fmt.Errorf("template validation failed: variables in template missing from ci-data: %v", validation.MissingVariables)
+					}
+
+					// Check for unused variables (also an error)
+					if len(validation.UnusedVariables) > 0 {
+						return fmt.Errorf("validation failed: variables in ci-data not used in template: %v", validation.UnusedVariables)
+					}
+
+					// Apply template variables
+					processedUserData := template.ReplaceVariables(rawUserData, ciData)
+
+					// Base64 encode the processed template
+					userData, err = encodeUserData(processedUserData)
+					if err != nil {
+						return err
+					}
+
+					if debugMode {
+						fmt.Println("-------- Processed Template --------")
+						fmt.Println(processedUserData)
+						fmt.Println("-----------------------------------")
+					}
+				} else {
+					// No template variables, just read and encode the file directly
+					userData, err = readAndEncodeUserData(flagUserData)
+					if err != nil {
+						return err
+					}
 				}
+
 				request.Server.UserData = userData
 			}
 		} else {
@@ -335,4 +388,5 @@ var (
 	flagVMNetboot  bool
 	flagUserData   string
 	flagMacAddrCSV string
+	flagCIData     string
 )

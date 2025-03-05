@@ -150,6 +150,19 @@ func readAndEncodeUserData(path string) (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
+func readUserDataFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read user data file: %v", err)
+	}
+	return string(data), nil
+}
+
+// encodeUserData base64 encodes the given string
+func encodeUserData(data string) (string, error) {
+	return base64.StdEncoding.EncodeToString([]byte(data)), nil
+}
+
 func validateMacAddr(mac string) error {
 	if mac == "" || mac == "auto" {
 		return nil

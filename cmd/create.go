@@ -240,6 +240,7 @@ func init() {
 	createVMCmd.Flags().BoolVar(&flagVMNetboot, "netboot", false, "Enable network boot with blank volume (deprecated, use --image)")
 	createVMCmd.Flags().StringVar(&flagUserData, "user-data", "", "User data for cloud-init (file path)")
 	createVMCmd.Flags().StringVar(&flagMacAddrCSV, "macaddr", "", "Comma-separated list of MAC addresses")
+	createVMCmd.Flags().StringVar(&flagCIData, "ci-data", "", "Template variables for cloud-init in format key:value,key:value")
 
 	// Bind flags to viper
 	viper.BindPFlag("flavor_id", createVMCmd.Flags().Lookup("flavor"))
