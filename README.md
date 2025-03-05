@@ -127,7 +127,7 @@ vhicmd create vm --name <name> \
   --networks <network-ids> \
   --ips <ip-addresses> \
   --user-data <template-file> \
-  --ci-data "key:value,key:value"
+  --ci-data 'key:value,key:value'
 ```
 
 Delete VM:
@@ -170,7 +170,7 @@ vhicmd update vm detach-port <vm-id> <port-id>
 
 Validate template:
 ```bash
-vhicmd validate <template-file> --ci-data "key:value,key:value" [--preview]
+vhicmd validate <template-file> --ci-data 'key:value,key:value' [--preview]
 ```
 
 #### Bash Script Template Example
@@ -194,7 +194,7 @@ Deploy with:
 ```bash
 vhicmd create vm --name server1 --flavor medium --image ubuntu-22.04 \
   --networks net1 --ips 10.0.0.5 --user-data template.sh \
-  --ci-data "hostname:server1,username:admin,ssh_key:\"ssh-rsa AAAA...\""
+  --ci-data 'hostname:server1,username:admin,ssh_key:ssh-rsa AAAA...'
 ```
 
 #### Cloud-Init YAML Template Example
@@ -218,7 +218,7 @@ Deploy with:
 ```bash
 vhicmd create vm --name web1 --flavor medium --image ubuntu-22.04 \
   --networks net1 --ips 10.0.0.6 --user-data template.yaml \
-  --ci-data "hostname:web1,username:admin,ssh_key:\"ssh-rsa AAAA...\",packages:\"nginx curl\""
+  --ci-data 'hostname:web1,username:admin,ssh_key:ssh-rsa AAAA...,packages:nginx curl'
 ```
 
 ### Storage Management
