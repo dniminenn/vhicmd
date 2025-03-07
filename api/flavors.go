@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // Flavor represents a single flavor object returned by the API.
@@ -90,6 +89,36 @@ func GetFlavorDetails(computeURL, token, flavorID string) (FlavorDetailResp, err
 
 // The flavor names are not unique, so this function a single flavor if only one is found,
 // if multiple flavors or none are found, it returns an error.
+// func GetFlavorIDByName(computeURL, token, flavorName string) (string, error) {
+// 	if isUuid(flavorName) {
+// 		return flavorName, nil
+// 	}
+
+// 	flavors, err := ListFlavors(computeURL, token, nil)
+
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	var foundFlavors []Flavor
+
+// 	for _, flavor := range flavors.Flavors {
+// 		if strings.Contains(flavor.Name, flavorName) {
+// 			foundFlavors = append(foundFlavors, flavor)
+// 		}
+// 	}
+
+// 	if len(foundFlavors) == 0 {
+// 		return "", fmt.Errorf("no flavors found for name %s", flavorName)
+// 	}
+
+// 	if len(foundFlavors) > 1 {
+// 		return "", fmt.Errorf("multiple flavors found for name %s", flavorName)
+// 	}
+
+// 	return foundFlavors[0].ID, nil
+// }
+
 func GetFlavorIDByName(computeURL, token, flavorName string) (string, error) {
 	if isUuid(flavorName) {
 		return flavorName, nil
@@ -104,7 +133,7 @@ func GetFlavorIDByName(computeURL, token, flavorName string) (string, error) {
 	var foundFlavors []Flavor
 
 	for _, flavor := range flavors.Flavors {
-		if strings.Contains(flavor.Name, flavorName) {
+		if flavor.Name == flavorName {
 			foundFlavors = append(foundFlavors, flavor)
 		}
 	}

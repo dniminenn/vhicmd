@@ -256,6 +256,8 @@ var migrateVMCmd = &cobra.Command{
 			})
 		}
 
+		api.RebootVM(computeURL, tok.Value, vmDetails.ID, "HARD")
+
 		// -- Not very reliable if the VM is hung since
 		// this only sends a soft os-stop signal, it takes
 		// ~5 minutes if acpid is not running in the VM.

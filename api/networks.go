@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"strings"
 )
 
 // Network represents a single network object in the response.
@@ -184,6 +183,34 @@ func GetSubnetDetails(networkURL, token, subnetID string) (Subnet, error) {
 }
 
 // GetNetworkIDByName fetches the ID of a network by its name.
+// func GetNetworkIDByName(networkURL, token, networkName string) (string, error) {
+// 	if isUuid(networkName) {
+// 		return networkName, nil
+// 	}
+
+// 	networks, err := ListNetworks(networkURL, token, nil)
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	foundNetworks := []Network{}
+// 	for _, network := range networks.Networks {
+// 		if strings.Contains(network.Name, networkName) {
+// 			foundNetworks = append(foundNetworks, network)
+// 		}
+// 	}
+
+// 	if len(foundNetworks) == 0 {
+// 		return "", fmt.Errorf("no network found for name %s", networkName)
+// 	}
+
+// 	if len(foundNetworks) > 1 {
+// 		return "", fmt.Errorf("multiple networks found for name %s", networkName)
+// 	}
+
+// 	return foundNetworks[0].ID, nil
+// }
+
 func GetNetworkIDByName(networkURL, token, networkName string) (string, error) {
 	if isUuid(networkName) {
 		return networkName, nil
@@ -196,7 +223,7 @@ func GetNetworkIDByName(networkURL, token, networkName string) (string, error) {
 
 	foundNetworks := []Network{}
 	for _, network := range networks.Networks {
-		if strings.Contains(network.Name, networkName) {
+		if network.Name == networkName {
 			foundNetworks = append(foundNetworks, network)
 		}
 	}

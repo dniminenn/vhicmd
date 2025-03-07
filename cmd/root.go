@@ -73,7 +73,8 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 	rootCmd.PersistentFlags().StringP("host", "H", "", "VHI host to connect to")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.vhirc)")
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		if cmd.Name() == "version" {
+		if cmd.Name() == "version" ||
+			cmd.Name() == "validate" {
 			return nil
 		}
 

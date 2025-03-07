@@ -228,6 +228,27 @@ func CreateVM(computeURL, token string, request CreateVMRequest) (CreateVMRespon
 	return result, nil
 }
 
+// CreateVMRaw is identical to CreateVM but takes raw JSON for networks object, workaround for "none" special case.
+func CreateVMRaw(computeURL, token string, jsonData []byte) (CreateVMResponse, error) {
+	var result CreateVMResponse
+	url := fmt.Sprintf("%s/servers", computeURL)
+
+	apiResp, err := callPOST(url, token, json.RawMessage(jsonData))
+	if err != nil {
+		return result, fmt.Errorf("error making HTTP POST request: %v", err)
+	}
+
+	if apiResp.ResponseCode != 202 { // 202 Accepted
+		return result, fmt.Errorf("VM create request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	}
+
+	err = json.Unmarshal([]byte(apiResp.Response), &result)
+	if err != nil {
+		return result, fmt.Errorf("failed to parse VM create response: %v", err)
+	}
+	return result, nil
+}
+
 // GetVMNetworks fetches the list of networks attached to a VM.
 func GetVMNetworks(computeURL, token, vmID string) (VMNetworkListResponse, error) {
 	var result VMNetworkListResponse
@@ -409,6 +430,35 @@ func DeleteVM(computeURL, token, vmID string) error {
 }
 
 // GetVMIDByName fetches the ID of a VM by its name.
+// func GetVMIDByName(computeURL, token, vmName string) (string, error) {
+// 	if isUuid(vmName) {
+// 		return vmName, nil
+// 	}
+
+// 	vms, err := ListVMs(computeURL, token, nil)
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	var foundVMs []VM
+
+// 	for _, vm := range vms.Servers {
+// 		if strings.Contains(vm.Name, vmName) {
+// 			foundVMs = append(foundVMs, vm)
+// 		}
+// 	}
+
+// 	if len(foundVMs) == 0 {
+// 		return "", fmt.Errorf("no VMs found for name %s", vmName)
+// 	}
+
+// 	if len(foundVMs) > 1 {
+// 		return "", fmt.Errorf("multiple VMs found for name %s", vmName)
+// 	}
+
+// 	return foundVMs[0].ID, nil
+// }
+
 func GetVMIDByName(computeURL, token, vmName string) (string, error) {
 	if isUuid(vmName) {
 		return vmName, nil
@@ -422,7 +472,7 @@ func GetVMIDByName(computeURL, token, vmName string) (string, error) {
 	var foundVMs []VM
 
 	for _, vm := range vms.Servers {
-		if strings.Contains(vm.Name, vmName) {
+		if vm.Name == vmName {
 			foundVMs = append(foundVMs, vm)
 		}
 	}

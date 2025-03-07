@@ -13,6 +13,7 @@ type CreateVMRequest struct {
 		BlockDeviceMappingV2 []map[string]interface{} `json:"block_device_mapping_v2,omitempty"`
 		Metadata             map[string]string        `json:"metadata,omitempty"`
 		UserData             string                   `json:"user_data,omitempty"`
+		ConfigDrive          bool                     `json:"config_drive,omitempty"`
 	} `json:"server"`
 }
 
