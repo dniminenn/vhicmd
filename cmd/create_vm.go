@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/jessegalley/vhicmd/api"
 	"github.com/jessegalley/vhicmd/internal/template"
@@ -18,140 +17,204 @@ var createVMCmd = &cobra.Command{
 	Use:   "vm",
 	Short: "Create a new virtual machine",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		//----------------------------------------------------------------
+		// 1. Validate token endpoints
+		//----------------------------------------------------------------
 		computeURL, err := validateTokenEndpoint(tok, "compute")
 		if err != nil {
 			return err
 		}
-
 		storageURL, err := validateTokenEndpoint(tok, "volumev3")
 		if err != nil {
 			return err
 		}
-
 		networkURL, err := validateTokenEndpoint(tok, "network")
 		if err != nil {
 			return err
 		}
-
 		imageURL, err := validateTokenEndpoint(tok, "image")
 		if err != nil {
 			return err
 		}
 
+		//----------------------------------------------------------------
+		// 2. Gather image and flavor references
+		//----------------------------------------------------------------
 		imageRef := flagImageRef
 		if imageRef == "" {
 			imageRef = viper.GetString("image_id")
 		}
-
-		// Get required parameters
 		flavorRef := flagFlavorRef
 		if flavorRef == "" {
 			flavorRef = viper.GetString("flavor_id")
 		}
 		if flavorRef == "" {
-			return fmt.Errorf("no flavor specified; provide --flavor flag or set 'flavor_id' in config")
+			return fmt.Errorf("no flavor specified; provide --flavor or set 'flavor_id' in config")
 		}
 
-		// Ensure networks are specified
+		//----------------------------------------------------------------
+		// 3. Networks must be specified
+		//----------------------------------------------------------------
 		networks := flagNetworkCSV
 		if networks == "" {
 			networks = viper.GetString("networks")
 		}
 		if networks == "" {
-			return fmt.Errorf("no networks specified; provide --networks flag or set 'networks' in config")
+			return fmt.Errorf("no networks specified; use --networks or set 'networks' in config")
 		}
 
-		// Ensure IPs are specified if MACs are not
+		//----------------------------------------------------------------
+		// 4. Gather IPs and/or MACs
+		//----------------------------------------------------------------
 		ips := flagIPCSV
-		if (ips == "") && (flagMacAddrCSV == "") {
-			return fmt.Errorf("no IPs specified; provide --ips flag")
-		}
-
 		macs := flagMacAddrCSV
 
-		// Split networks and IPs into slices
-		var networkIDs []string
-		if flagNetworkCSV != "" {
-			networkIDs = strings.Split(networks, ",")
+		if ips == "" && macs == "" {
+			return fmt.Errorf("must specify either --ips or --macs (use 'none' or 'auto')")
 		}
 
+		//----------------------------------------------------------------
+		// 5. Split the CSV values
+		//----------------------------------------------------------------
+		networkIDs := strings.Split(networks, ",")
 		var ipAddresses []string
-		if flagIPCSV != "" {
+		if ips != "" {
 			ipAddresses = strings.Split(ips, ",")
+		} else {
+			// If no --ips, fill with "none" for each network
+			ipAddresses = make([]string, len(networkIDs))
+			for i := range ipAddresses {
+				ipAddresses[i] = "none"
+			}
 		}
 
 		var macAddresses []string
-		if flagMacAddrCSV != "" {
+		if macs != "" {
 			macAddresses = strings.Split(macs, ",")
+		} else {
+			// If no --macs, fill with "none" for each network
+			macAddresses = make([]string, len(networkIDs))
+			for i := range macAddresses {
+				macAddresses[i] = "none"
+			}
 		}
 
-		// If MACs provided, ensure they match networks
-		if len(macAddresses) > 0 {
-			if len(networkIDs) != len(macAddresses) {
-				return fmt.Errorf("number of networks (%d) must match number of MACs (%d)", len(networkIDs), len(macAddresses))
-			}
-			// MACs provided so IPs shouldn't be
-			if len(ipAddresses) > 0 {
-				return fmt.Errorf("cannot specify both MACs and IPs")
-			}
-			// No MACs, ensure IPs match networks
-		} else if len(networkIDs) != len(ipAddresses) {
-			return fmt.Errorf("number of networks (%d) must match number of IPs (%d)", len(networkIDs), len(ipAddresses))
+		//----------------------------------------------------------------
+		// 6. Basic length checks
+		//----------------------------------------------------------------
+		if len(networkIDs) != len(ipAddresses) || len(networkIDs) != len(macAddresses) {
+			return fmt.Errorf(
+				"number of networks (%d) must match number of IPs (%d) and MACs (%d)",
+				len(networkIDs), len(ipAddresses), len(macAddresses),
+			)
 		}
 
-		// Check that the networks exist by name, if not, then pass the ID
-		for i, networkID := range networkIDs {
-			n, err := api.GetNetworkIDByName(networkURL, tok.Value, networkID)
+		//----------------------------------------------------------------
+		// 7. Validate IPs and MACs with your helpers; resolve network name -> ID
+		//----------------------------------------------------------------
+		if err := validateIPs(ipAddresses); err != nil {
+			return err
+		}
+		for _, m := range macAddresses {
+			if err := validateMAC(m); err != nil {
+				return err
+			}
+		}
+
+		for i, netName := range networkIDs {
+			nid, err := api.GetNetworkIDByName(networkURL, tok.Value, netName)
 			if err == nil {
-				networkIDs[i] = n
+				networkIDs[i] = nid
 			}
 		}
 
-		// Check that the image exists by name, if not, then pass the ID
-		imgID, err := api.GetImageIDByName(imageURL, tok.Value, imageRef)
-		if err == nil {
+		//----------------------------------------------------------------
+		// 8. Resolve image & flavor by name if necessary
+		//----------------------------------------------------------------
+		if imgID, err := api.GetImageIDByName(imageURL, tok.Value, imageRef); err == nil && imgID != "" {
 			imageRef = imgID
 		}
-
-		// Check that the flavor exists by name, if not, then pass the ID
-		f, err := api.GetFlavorIDByName(computeURL, tok.Value, flavorRef)
-		if err == nil {
-			flavorRef = f
+		if fid, err := api.GetFlavorIDByName(computeURL, tok.Value, flavorRef); err == nil && fid != "" {
+			flavorRef = fid
 		}
 
-		// Calculate volume size
-		volumeSize := 10 // Default minimum
+		//----------------------------------------------------------------
+		// 9. Volume size & netboot checks
+		//----------------------------------------------------------------
+		volumeSize := 10 // default
 		if flagVMSize > 0 {
 			volumeSize = flagVMSize
 		}
-
-		// If ci-data is provided, user-data is required
 		if flagCIData != "" && flagUserData == "" {
-			return fmt.Errorf("--ci-data requires --user-data to be specified")
+			return fmt.Errorf("--ci-data requires --user-data")
 		}
 
-		// Create initial VM request
+		//----------------------------------------------------------------
+		// 10. Create the base VM request
+		//----------------------------------------------------------------
 		var request api.CreateVMRequest
 		request.Server.Name = flagVMName
 		request.Server.FlavorRef = flavorRef
-		//request.Server.Networks = networkMapping
-		// Pass "none" to networks, so no interfaces are attached initially**
-		request.Server.Networks = "none"
 
-		// Set metadata for network boot if no image is specified
-		// netboot is deprecated, use --image flag instead
-		// the reason is that VHI does not have good support for netboot,
-		// and a custom iPXE rom is required to boot from network
+		// netboot => skip image
 		if flagVMNetboot {
-			imageRef = "" // Clear image ref if netboot is enabled
+			imageRef = ""
 			request.Server.Metadata = map[string]string{
 				"network_install": "true",
 			}
 		}
 
-		// Determine block device mapping
+		//----------------------------------------------------------------
+		// 11. Build the networks array *in memory*, then JSON-encode it
+		//----------------------------------------------------------------
+		var netSlice []map[string]interface{}
+
+		for i, netID := range networkIDs {
+			ipVal := strings.TrimSpace(ipAddresses[i])
+			macVal := strings.TrimSpace(macAddresses[i])
+
+			netObj := map[string]interface{}{
+				"uuid": netID,
+			}
+
+			// If IP != "none", it's a managed NIC
+			if strings.ToLower(ipVal) != "none" {
+				if strings.ToLower(ipVal) == "auto" {
+					// skip => DHCP
+				} else {
+					// real IP => set fixed_ip
+					netObj["fixed_ip"] = ipVal
+				}
+				// Managed NIC => no custom MAC
+				if strings.ToLower(macVal) != "none" && strings.ToLower(macVal) != "auto" {
+					return fmt.Errorf("managed NIC cannot have custom MAC: IP=%s MAC=%s", ipVal, macVal)
+				}
+			} else {
+				// Unmanaged NIC => ipVal = "none"
+				if strings.ToLower(macVal) == "none" || strings.ToLower(macVal) == "auto" {
+					// skip => hypervisor picks MAC
+				} else {
+					netObj["mac_address"] = macVal
+				}
+			}
+
+			netSlice = append(netSlice, netObj)
+		}
+
+		// Convert that slice -> JSON string
+		netBytes, err := json.Marshal(netSlice)
+		if err != nil {
+			return fmt.Errorf("failed to marshal networks: %v", err)
+		}
+
+		// Assign that JSON string to the "Networks" field
+		request.Server.Networks = string(netBytes)
+
+		//----------------------------------------------------------------
+		// 12. Block device mapping
+		//----------------------------------------------------------------
 		if imageRef != "" {
-			// imageRef exists, create boot volume from image
+			// Use the image => create volume from image
 			request.Server.BlockDeviceMappingV2 = []map[string]interface{}{
 				{
 					"boot_index":            "0",
@@ -164,54 +227,40 @@ var createVMCmd = &cobra.Command{
 					"disk_bus":              "scsi",
 				},
 			}
-			// cloud-init script
-			// VHI calls this user_data, just b64 encoded cloud-init script
+
+			//------------------------------------------------------------
+			// 13. Cloud-init / user data (templating if needed)
+			//------------------------------------------------------------
 			if flagUserData != "" {
 				var userData string
-
-				// Check if we have template variables to apply
 				if flagCIData != "" {
-					// Parse the ci-data key-value pairs
+					// Templating path
 					ciData, err := template.ParseKeyValueString(flagCIData)
 					if err != nil {
 						return fmt.Errorf("error parsing ci-data: %v", err)
 					}
 
-					// Read the template file
 					rawUserData, err := readUserDataFile(flagUserData)
 					if err != nil {
 						return err
 					}
 
-					// Validate template before processing
 					validation := template.ValidateTemplate(rawUserData, ciData)
-
-					// Check for missing variables (this is an error)
 					if !validation.Valid {
-						return fmt.Errorf("template validation failed: variables in template missing from ci-data: %v", validation.MissingVariables)
+						return fmt.Errorf("template validation failed: missing vars %v", validation.MissingVariables)
 					}
-
-					// Check for unused variables (also an error)
 					if len(validation.UnusedVariables) > 0 {
-						return fmt.Errorf("validation failed: variables in ci-data not used in template: %v", validation.UnusedVariables)
+						return fmt.Errorf("template validation failed: unused vars %v", validation.UnusedVariables)
 					}
 
-					// Apply template variables
 					processedUserData := template.ReplaceVariables(rawUserData, ciData)
-
-					// Base64 encode the processed template
 					userData, err = encodeUserData(processedUserData)
 					if err != nil {
 						return err
 					}
 
-					if debugMode {
-						fmt.Println("-------- Processed Template --------")
-						fmt.Println(processedUserData)
-						fmt.Println("-----------------------------------")
-					}
 				} else {
-					// No template variables, just read and encode the file directly
+					// Plain user-data, no templating
 					userData, err = readAndEncodeUserData(flagUserData)
 					if err != nil {
 						return err
@@ -219,11 +268,11 @@ var createVMCmd = &cobra.Command{
 				}
 
 				request.Server.UserData = userData
+				request.Server.ConfigDrive = true
 			}
+
 		} else {
-			// Create blank volume if no image is specified
-			// we get here if --netboot is flagged or --image is not provided
-			// and there is no image in the Vyper config
+			// Netboot or no image => create blank volume
 			fmt.Printf("Creating blank boot volume for VM %s...\n", flagVMName)
 			volRequest := api.CreateVolumeRequest{}
 			volRequest.Volume.Name = fmt.Sprintf("%s-boot", flagVMName)
@@ -235,16 +284,13 @@ var createVMCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("failed to create blank boot volume: %v", err)
 			}
-
 			fmt.Printf("Waiting for volume to become available...\n")
-			err = api.WaitForVolumeStatus(storageURL, tok.Value, volResp.Volume.ID, "available")
-			if err != nil {
+
+			if err := api.WaitForVolumeStatus(storageURL, tok.Value, volResp.Volume.ID, "available"); err != nil {
 				return fmt.Errorf("failed waiting for volume: %v", err)
 			}
 
-			// Set bootable flag
-			err = api.SetVolumeBootable(storageURL, tok.Value, volResp.Volume.ID, true)
-			if err != nil {
+			if err := api.SetVolumeBootable(storageURL, tok.Value, volResp.Volume.ID, true); err != nil {
 				return fmt.Errorf("failed to set bootable flag: %v", err)
 			}
 
@@ -259,100 +305,96 @@ var createVMCmd = &cobra.Command{
 			}
 		}
 
-		// Create the VM
+		//----------------------------------------------------------------
+		// 14. Create the VM in one shot (with our networks JSON)
+		//----------------------------------------------------------------
 		fmt.Printf("Creating VM %s...\n", flagVMName)
-		resp, err := api.CreateVM(computeURL, tok.Value, request)
+
+		// Create a complete JSON representation of the request
+		requestBytes, err := json.Marshal(request)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request: %v", err)
+		}
+
+		// Fix the networks field directly in the JSON to make it a JSON array instead of a string
+		// Only do this if we aren't using the special "none" case
+		if request.Server.Networks != "none" {
+			networksStr := fmt.Sprintf(`"networks":"%s"`, strings.ReplaceAll(string(netBytes), `"`, `\"`))
+			networksJSON := fmt.Sprintf(`"networks":%s`, string(netBytes))
+			requestBytes = []byte(strings.Replace(string(requestBytes), networksStr, networksJSON, 1))
+		}
+
+		// Call the raw version that won't re-marshal the JSON
+		resp, err := api.CreateVMRaw(computeURL, tok.Value, requestBytes)
 		if err != nil {
 			return fmt.Errorf("failed to create VM: %v", err)
 		}
 
-		// Wait for VM to become active
+		//----------------------------------------------------------------
+		// 15. Wait for VM to become ACTIVE
+		//----------------------------------------------------------------
 		vmDetails, err := api.WaitForStatus(computeURL, tok.Value, resp.Server.ID, "ACTIVE")
 		if err != nil {
 			return err
 		}
 
-		//tenantID := vmDetails.TenantID
-
-		// Prepare output details
+		//----------------------------------------------------------------
+		// 16. Prepare output details
+		//----------------------------------------------------------------
 		details := map[string]interface{}{
 			"power_state": getPowerStateString(vmDetails.PowerState),
 			"name":        vmDetails.Name,
 			"id":          vmDetails.ID,
 			"metadata":    vmDetails.Metadata,
 		}
-		// Add network info
-		netInfo := make([]map[string]interface{}, 0)
 
-		// Iterate over user-provided networks and IPs
-		for i, networkID := range networkIDs {
-			fmt.Printf("Attaching network %s to VM %s...\n", networkID, resp.Server.ID)
-			var interfaceResp api.AttachNetworkResponse
+		// Build a list of network details from vmDetails.HCIInfo.Network
+		netInfo := []map[string]interface{}{}
 
-			if len(macAddresses) > 0 && macAddresses[i] != "" {
-				// Call the panel API to attach the network interface with MAC
-				fmt.Printf("Using MAC address %s for network %s\n", macAddresses[i], networkID)
-				// Create a port with the MAC address
-				portResp, err := api.CreatePort(networkURL, tok.Value, networkID, macAddresses[i])
-				if err != nil {
-					return fmt.Errorf("failed to create port for network %s: %v", networkID, err)
-				}
-				// Attach the port to the VM
-				interfaceResp, err = api.AttachNetworkToVM(networkURL, computeURL, tok.Value, resp.Server.ID, "", portResp.Port.ID, nil)
-				if err != nil {
-					return fmt.Errorf("failed to attach network %s with MAC %s: %v", networkID, macAddresses[i], err)
-				}
-			} else {
-				// Handle IP-based attachment
-				ip := strings.TrimSpace(ipAddresses[i])
-				fixedIPs := []string{}
-				if ip != "" {
-					fixedIPs = append(fixedIPs, ip)
-				}
+		for _, iface := range vmDetails.HCIInfo.Network {
+			// 1) Use your existing fields: Mac, Network.ID, Network.Label
+			netObj := map[string]interface{}{
+				"mac":           iface.Mac,
+				"network_id":    iface.Network.ID,
+				"network_label": iface.Network.Label,
+			}
 
-				// Call API to attach the network interface
-				interfaceResp, err = api.AttachNetworkToVM(networkURL, computeURL, tok.Value, resp.Server.ID, networkID, "", fixedIPs)
-				if err != nil {
-					fmt.Printf("Failed to attach network with ip %s, retrying as unmanaged iface\n", ip)
-					// Retry without fixed IP (unmanaged interface)
-					interfaceResp, err = api.AttachNetworkToVM(networkURL, computeURL, tok.Value, resp.Server.ID, networkID, "", nil)
-					if err != nil {
-						return fmt.Errorf("Failed to attach network %s even without fixed IP\n", networkID)
+			// 2) Re-marshal 'iface' into a generic map to see if "ips" is present
+			rawIface, err := json.Marshal(iface)
+			if err == nil {
+				// Unmarshal into a generic map
+				var generic map[string]interface{}
+				if err := json.Unmarshal(rawIface, &generic); err == nil {
+					// Attempt to read generic["ips"]
+					if val, ok := generic["ips"]; ok {
+						// Typically "ips" might be an array of strings
+						if arr, ok := val.([]interface{}); ok && len(arr) > 0 {
+							ipList := []string{}
+							for _, ipVal := range arr {
+								if ipStr, ok := ipVal.(string); ok {
+									ipList = append(ipList, ipStr)
+								}
+							}
+							// If we actually found some IP strings, store them
+							if len(ipList) > 0 {
+								netObj["ips"] = ipList
+							}
+						}
 					}
-					fmt.Printf("Successfully attached unmanaged iface %s.\n", networkID)
-				} else {
-					fmt.Printf("Successfully attached network %s with fixed IP %s.\n", networkID, ip)
 				}
 			}
 
-			// Extract MAC address from the response
-			macAddress := strings.ToUpper(interfaceResp.InterfaceAttachment.MacAddr)
-			if macAddress == "" {
-				macAddress = "UNKNOWN"
-			}
-
-			// Extract IP from response or use input IP
-			var attachedIP string
-			if len(interfaceResp.InterfaceAttachment.FixedIPs) > 0 {
-				attachedIP = interfaceResp.InterfaceAttachment.FixedIPs[0].IPAddress
-			} else if len(ipAddresses) > 0 {
-				attachedIP = ipAddresses[i]
-			}
-
-			// Append to network info
-			netInfo = append(netInfo, map[string]interface{}{
-				"network_id":  networkID,
-				"mac_address": macAddress,
-				"ip_address":  attachedIP,
-			})
-			time.Sleep(10 * time.Second) // sleep to ensure network is attached before next iteration
+			netInfo = append(netInfo, netObj)
 		}
 
-		// Add network details to output
+		// If we found NICs, add them to our final details map
 		if len(netInfo) > 0 {
-			details["networks"] = netInfo
+			details["network_details"] = netInfo
 		}
 
+		//----------------------------------------------------------------
+		// 17. Output JSON or YAML
+		//----------------------------------------------------------------
 		if flagJsonOutput {
 			jsonBytes, err := json.MarshalIndent(details, "", "  ")
 			if err != nil {
@@ -367,11 +409,13 @@ var createVMCmd = &cobra.Command{
 			fmt.Println(string(yamlBytes))
 		}
 
-		// Print netboot command if enabled
+		//----------------------------------------------------------------
+		// 18. Netboot console message if needed
+		//----------------------------------------------------------------
 		if flagVMNetboot {
 			consoleURL := fmt.Sprintf("%s:8800/compute/servers/instances/%s/console", tok.Host, vmDetails.ID)
-			fmt.Printf("\nGo to VHI console to complete machine bootup and installation.")
-			fmt.Printf("\nVHI console: %s\n", consoleURL)
+			fmt.Printf("\nGo to VHI console to complete machine boot/install.\n")
+			fmt.Printf("VHI console: %s\n", consoleURL)
 		}
 
 		return nil

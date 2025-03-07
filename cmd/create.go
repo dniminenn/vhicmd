@@ -234,12 +234,12 @@ func init() {
 	createVMCmd.Flags().StringVar(&flagFlavorRef, "flavor", "", "Flavor ID for the virtual machine")
 	createVMCmd.Flags().StringVar(&flagImageRef, "image", "", "Image ID for the virtual machine")
 	createVMCmd.Flags().StringVar(&flagNetworkCSV, "networks", "", "Comma-separated list of network UUIDs")
-	createVMCmd.Flags().StringVar(&flagIPCSV, "ips", "", "Comma-separated list of IP addresses")
+	createVMCmd.Flags().StringVar(&flagIPCSV, "ips", "", "Comma-separated list of IP addresses ('none' for unmanaged network)")
 	createVMCmd.Flags().BoolVar(&flagJsonOutput, "json", false, "Output in JSON format (default: YAML)")
 	createVMCmd.Flags().IntVar(&flagVMSize, "size", 0, "Size in GB of boot volume")
 	createVMCmd.Flags().BoolVar(&flagVMNetboot, "netboot", false, "Enable network boot with blank volume (deprecated, use --image)")
-	createVMCmd.Flags().StringVar(&flagUserData, "user-data", "", "User data for cloud-init (file path)")
-	createVMCmd.Flags().StringVar(&flagMacAddrCSV, "macaddr", "", "Comma-separated list of MAC addresses")
+	createVMCmd.Flags().StringVar(&flagUserData, "user-data", "", "User script, bash, YAML (file path), use with --ci-data for templating, eg. {{%variable%}}")
+	createVMCmd.Flags().StringVar(&flagMacAddrCSV, "macaddr", "", "Comma-separated list of MAC addresses ('auto' is valid value)")
 	createVMCmd.Flags().StringVar(&flagCIData, "ci-data", "", "Template variables for cloud-init in format key:value,key:value")
 
 	// Bind flags to viper

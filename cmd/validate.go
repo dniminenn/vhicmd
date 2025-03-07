@@ -69,12 +69,13 @@ var validateCmd = &cobra.Command{
 			}
 		}
 
-		// Check for unused variables
+		// Check for unused variables - now treating as error instead of warning
 		if len(validation.UnusedVariables) > 0 {
-			fmt.Println("\n⚠️ WARNING: Unused variables ⚠️")
+			fmt.Println("\n⚠️ ERROR: Unused variables ⚠️")
 			for _, v := range validation.UnusedVariables {
 				fmt.Printf("  %s is provided but not used in template\n", v)
 			}
+			validation.Valid = false // Mark as invalid for unused variables
 		}
 
 		// Preview processed template
@@ -91,8 +92,12 @@ var validateCmd = &cobra.Command{
 			fmt.Println("✅ Template is valid (all required variables provided)")
 			return nil
 		} else {
-			fmt.Println("❌ Template is invalid (missing required variables)")
-			return fmt.Errorf("validation failed: template has variables with no values provided")
+			fmt.Println("❌ Template is invalid (missing variables or unused variables)")
+			if len(validation.MissingVariables) > 0 {
+				return fmt.Errorf("validation failed: template has variables with no values provided")
+			} else {
+				return fmt.Errorf("validation failed: ci-data contains variables not used in template")
+			}
 		}
 	},
 }

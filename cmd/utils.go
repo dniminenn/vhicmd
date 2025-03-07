@@ -279,13 +279,39 @@ func displayProjects(response api.ProjectListResponse) {
 }
 
 func validateMAC(mac string) error {
-	if mac == "" {
+	if mac == "" || mac == "auto" || mac == "none" {
 		return nil // empty MAC is valid for auto-assignment
 	}
 
 	macRegex := regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`)
 	if !macRegex.MatchString(mac) {
 		return fmt.Errorf("invalid MAC address format. Must be XX:XX:XX:XX:XX:XX")
+	}
+	return nil
+}
+
+func validateIP(ip string) error {
+	if ip == "" || ip == "none" || ip == "auto" {
+		return nil
+	}
+
+	if strings.Contains(ip, "/") {
+		return fmt.Errorf("IP address should not contain CIDR notation")
+	}
+
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return fmt.Errorf("invalid IP address format")
+	}
+
+	return nil
+}
+
+func validateIPs(ips []string) error {
+	for _, ip := range ips {
+		if err := validateIP(ip); err != nil {
+			return fmt.Errorf("IP '%s' is invalid: %v", ip, err)
+		}
 	}
 	return nil
 }

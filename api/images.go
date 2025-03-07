@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/jessegalley/vhicmd/internal/httpclient"
@@ -189,6 +188,33 @@ func CreateAndUploadImage(imageURL, token string, req CreateImageRequest, data i
 // GetImageByName fetches the details of an image by its name.
 // The image names are not unique, so this function returns the first image if only one is found,
 // if multiple images or none are found, it returns an error.
+// func GetImageIDByName(imageURL, token, imageName string) (string, error) {
+// 	if isUuid(imageName) {
+// 		return imageName, nil
+// 	}
+
+// 	images, err := ListImages(imageURL, token, nil)
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	foundImages := []Image{}
+// 	for _, image := range images.Images {
+// 		if strings.Contains(image.Name, imageName) {
+// 			foundImages = append(foundImages, image)
+// 		}
+// 	}
+
+// 	if len(foundImages) == 0 {
+// 		return "", fmt.Errorf("no images found for name %s", imageName)
+// 	}
+// 	if len(foundImages) > 1 {
+// 		return "", fmt.Errorf("multiple images found for name %s", imageName)
+// 	}
+
+// 	return foundImages[0].ID, nil
+// }
+
 func GetImageIDByName(imageURL, token, imageName string) (string, error) {
 	if isUuid(imageName) {
 		return imageName, nil
@@ -201,7 +227,7 @@ func GetImageIDByName(imageURL, token, imageName string) (string, error) {
 
 	foundImages := []Image{}
 	for _, image := range images.Images {
-		if strings.Contains(image.Name, imageName) {
+		if image.Name == imageName {
 			foundImages = append(foundImages, image)
 		}
 	}
