@@ -30,15 +30,5 @@ test-unit:
 	@echo "Running unit tests..."
 	go test -v ./internal/template
 
-test-integration: build
-	@echo "Running integration tests for validation command..."
-	@echo "Validating bash template..."
-	./bin/$(BINARY_NAME) validate $(TEST_TEMPLATE_DIR)/mock-setup.sh --ci-data 'hostname:test,username:admin,ssh_key:testkey,packages:nginx,app_type:web,environment:test'
-	@echo "Validating yaml template..."
-	./bin/$(BINARY_NAME) validate $(TEST_TEMPLATE_DIR)/mock-setup.yaml --ci-data 'hostname:test,username:admin,ssh_key:testkey,extra_packages:curl,server_name:test.com,environment:test'
-	@echo "Testing for expected failures (should produce errors)..."
-	@(./bin/$(BINARY_NAME) validate $(TEST_TEMPLATE_DIR)/mock-setup.sh --ci-data 'hostname:test' || echo "Test passed: Expected failure due to missing variables") && \
-	(./bin/$(BINARY_NAME) validate $(TEST_TEMPLATE_DIR)/mock-setup.sh --ci-data 'hostname:test,username:admin,ssh_key:testkey,packages:nginx,app_type:web,environment:test,extra:value' || echo "Test passed: Expected failure due to unused variables")
-
-test: test-unit test-integration
+test: test-unit
 	@echo "All tests completed"

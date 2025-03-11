@@ -264,6 +264,30 @@ func TestParseKeyValueString(t *testing.T) {
 			expected: nil,
 			wantErr:  true,
 		},
+		{
+			name:     "newline delimited key-values",
+			input:    "key1:value1\nkey2:value2\nkey3:value3",
+			expected: map[string]string{"key1": "value1", "key2": "value2", "key3": "value3"},
+			wantErr:  false,
+		},
+		{
+			name:     "mixed newline and comma delimiters",
+			input:    "key1:value1\nkey2:value2,key3:value3",
+			expected: map[string]string{"key1": "value1", "key2": "value2", "key3": "value3"},
+			wantErr:  false,
+		},
+		{
+			name:     "newline with spaces and empty lines",
+			input:    "key1:value1\n\n  key2:value2  \n\nkey3:value3",
+			expected: map[string]string{"key1": "value1", "key2": "value2", "key3": "value3"},
+			wantErr:  false,
+		},
+		{
+			name:     "newline with quoted values containing commas",
+			input:    "key1:\"value1, with comma\"\nkey2:\"value2, with comma\"",
+			expected: map[string]string{"key1": "value1, with comma", "key2": "value2, with comma"},
+			wantErr:  false,
+		},
 	}
 
 	for _, tt := range tests {

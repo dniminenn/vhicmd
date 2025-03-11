@@ -98,7 +98,7 @@ func ReplaceVariables(template string, keyValues map[string]string) string {
 	return result
 }
 
-// ParseKeyValueString parses a string of format "key:value,key:value" or "key:value","key:value" into a map
+// ParseKeyValueString parses a string of format "key:value,key:value" or "key:value\nkey:value" into a map
 // It handles quoted values to allow commas within values and preserves colons in values
 func ParseKeyValueString(input string) (map[string]string, error) {
 	result := make(map[string]string)
@@ -119,11 +119,38 @@ func ParseKeyValueString(input string) (map[string]string, error) {
 			}
 			return result, nil
 		}
-		// If parsing as CSV fails, fall through to comma-split approach
+		// If parsing as CSV fails, fall through to delimiter-based approach
 	}
 
-	// Traditional comma-split approach
-	pairs := strings.Split(input, ",")
+	// Use either newlines or commas as delimiters
+	var pairs []string
+	if strings.Contains(input, "\n") {
+		// Process each line, then handle commas within each line
+		lines := strings.Split(input, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue // Skip empty lines
+			}
+
+			// If line contains commas, split it further
+			if strings.Contains(line, ",") {
+				linePairs := strings.Split(line, ",")
+				for _, pair := range linePairs {
+					if trimmedPair := strings.TrimSpace(pair); trimmedPair != "" {
+						pairs = append(pairs, trimmedPair)
+					}
+				}
+			} else {
+				pairs = append(pairs, line)
+			}
+		}
+	} else {
+		// No newlines, use comma splitting
+		pairs = strings.Split(input, ",")
+	}
+
+	// Process all pairs
 	for _, pair := range pairs {
 		kv, err := parseKeyValue(pair)
 		if err != nil {
@@ -164,7 +191,7 @@ func parseKeyValue(pair string) (keyValue, error) {
 	return keyValue{key: key, value: value}, nil
 }
 
-// parseQuotedCSV parses comma-separated values that may contain quotes
+// parseQuotedCSV parses comma-separated values that may contain quotes and newlines
 func parseQuotedCSV(input string) ([]string, error) {
 	var result []string
 	var currentField strings.Builder
@@ -177,8 +204,8 @@ func parseQuotedCSV(input string) ([]string, error) {
 		case char == '"':
 			// Toggle quote state
 			inQuotes = !inQuotes
-		case char == ',' && !inQuotes:
-			// End of field
+		case (char == ',' || char == '\n') && !inQuotes:
+			// End of field (comma or newline outside quotes)
 			result = append(result, currentField.String())
 			currentField.Reset()
 		default:
