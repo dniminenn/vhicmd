@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -143,17 +146,17 @@ func validateTokenEndpoint(tok api.Token, endpoint string) (string, error) {
 // readAndEncodeUserData() reads the user data file at the given path
 // Commonly used for cloud-init scripts
 func readAndEncodeUserData(path string) (string, error) {
-	data, err := os.ReadFile(path)
+	data, err := fetchFileOrURL(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read user data file: %v", err)
+		return "", fmt.Errorf("failed to read user data: %v", err)
 	}
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
 func readUserDataFile(path string) (string, error) {
-	data, err := os.ReadFile(path)
+	data, err := fetchFileOrURL(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read user data file: %v", err)
+		return "", fmt.Errorf("failed to read user data: %v", err)
 	}
 	return string(data), nil
 }
@@ -314,4 +317,28 @@ func validateIPs(ips []string) error {
 		}
 	}
 	return nil
+}
+
+// fetchFileOrURL fetches a file from a local path or a URL, allowing insecure TLS
+func fetchFileOrURL(path string) ([]byte, error) {
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client := &http.Client{Transport: tr}
+
+		resp, err := client.Get(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch URL: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("HTTP request failed with status: %s", resp.Status)
+		}
+
+		return io.ReadAll(resp.Body)
+	}
+
+	return os.ReadFile(path)
 }

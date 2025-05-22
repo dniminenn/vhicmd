@@ -322,3 +322,43 @@ func RemoveVolumeTypeAccess(storageURL, token, volumeTypeID, projectID string) e
 
 	return nil
 }
+
+// UploadVolumeToImage creates an image from a volume
+func UploadVolumeToImage(storageURL, token, volumeID, imageName string) (VolumeUploadResponse, error) {
+	var result VolumeUploadResponse
+
+	url := fmt.Sprintf("%s/volumes/%s/action", storageURL, volumeID)
+
+	request := VolumeUploadRequest{
+		OsVolumeUploadImage: OsVolumeUploadImage{
+			ImageName:       imageName,
+			Force:           true,
+			DiskFormat:      "qcow2", // qcow2 is more efficient than raw
+			ContainerFormat: "bare",
+		},
+	}
+
+	apiResp, err := callPOST(url, token, request)
+	if err != nil {
+		return result, fmt.Errorf("failed to upload volume to image: %v", err)
+	}
+
+	if apiResp.ResponseCode != 202 {
+		return result, fmt.Errorf("volume upload request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	}
+
+	err = json.Unmarshal([]byte(apiResp.Response), &result)
+	if err != nil {
+		return result, fmt.Errorf("failed to parse volume upload response: %v", err)
+	}
+
+	return result, nil
+}
+
+// CreateVolumeFromImage creates a new volume from an image
+func CreateVolumeFromImage(storageURL, token, imageID, name string) (CreateVolumeResponse, error) {
+	request := CreateVolumeRequest{}
+	request.Volume.Name = name
+	request.Volume.ImageRef = imageID
+	return CreateVolume(storageURL, token, request)
+}

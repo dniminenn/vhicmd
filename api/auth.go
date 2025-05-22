@@ -323,6 +323,50 @@ func AuthenticateById(host, domainID, project, username, password string) (strin
 	return apiResp.TokenHeader, nil
 }
 
+// GetTokenFilePath returns the path to the token file
+func GetTokenFilePath() (string, error) {
+	// Check VHICMD_RCDIR env var first
+	if rcDir := os.Getenv("VHICMD_RCDIR"); rcDir != "" {
+		return filepath.Join(rcDir, ".vhicmd.token"), nil
+	}
+
+	// Otherwise use original user's home directory
+	var home string
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
+		out, err := exec.Command("getent", "passwd", sudoUser).Output()
+		if err == nil {
+			home = strings.Split(string(out), ":")[5]
+		}
+	}
+
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get user home directory: %v", err)
+		}
+	}
+
+	return filepath.Join(home, ".vhicmd.token"), nil
+}
+
+// InitTokenFile initializes the token file path based on RC directory
+func InitTokenFile(rcFile string) error {
+	// If an RC file is specified, use the same directory for token file
+	if rcFile != "" {
+		TokenFile = filepath.Join(filepath.Dir(rcFile), ".vhicmd.token")
+		return nil
+	}
+
+	// Otherwise use default path
+	tokenPath, err := GetTokenFilePath()
+	if err != nil {
+		return err
+	}
+	TokenFile = tokenPath
+	return nil
+}
+
 func init() {
 	var home string
 	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
@@ -340,5 +384,5 @@ func init() {
 		}
 	}
 
-	TokenFile = filepath.Join(home, ".vhicmd.token")
+	TokenFile = ""
 }

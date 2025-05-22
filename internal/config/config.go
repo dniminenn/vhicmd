@@ -20,38 +20,55 @@ type Config struct {
 	ImageID  string `mapstructure:"image_id"`
 }
 
-func InitConfig(cfgFile string) (*viper.Viper, error) {
+// GetDefaultConfigPath returns the default path for the config file
+func GetDefaultConfigPath() (string, error) {
+	// Check VHICMD_RCDIR environment variable first
+	if rcDir := os.Getenv("VHICMD_RCDIR"); rcDir != "" {
+		return filepath.Join(rcDir, ".vhirc"), nil
+	}
 
+	// Otherwise use original user's home directory
+	var home string
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
+		out, err := exec.Command("getent", "passwd", sudoUser).Output()
+		if err == nil {
+			home = strings.Split(string(out), ":")[5]
+		}
+	}
+
+	// Fallback to regular UserHomeDir if not running with sudo
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return filepath.Join(home, ".vhirc"), nil
+}
+
+func InitConfig(cfgFile string) (*viper.Viper, error) {
 	v := viper.New()
 
 	if cfgFile != "" {
-        v.SetConfigFile(cfgFile)
-        v.SetConfigType("yaml")
-    } else {
-        // Get original user's home directory via SUDO_USER env var
-        var home string
-        if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
-            out, err := exec.Command("getent", "passwd", sudoUser).Output()
-            if err == nil {
-                home = strings.Split(string(out), ":")[5]
-            }
-        }
-
-        // Fallback to regular UserHomeDir if not running with sudo
-        if home == "" {
-            var err error
-            home, err = os.UserHomeDir()
-            if err != nil {
-                return nil, err
-            }
-        }
-
-        v.SetConfigFile(filepath.Join(home, ".vhirc"))
-        v.SetConfigType("yaml")
-    }
+		v.SetConfigFile(cfgFile)
+		v.SetConfigType("yaml")
+	} else {
+		configPath, err := GetDefaultConfigPath()
+		if err != nil {
+			return nil, err
+		}
+		v.SetConfigFile(configPath)
+		v.SetConfigType("yaml")
+	}
 
 	// touch the file if it doesn't exist, chmod 600
 	if _, err := os.Stat(v.ConfigFileUsed()); os.IsNotExist(err) {
+		// Create parent directory if needed
+		if err := os.MkdirAll(filepath.Dir(v.ConfigFileUsed()), 0700); err != nil {
+			return nil, err
+		}
 		f, err := os.Create(v.ConfigFileUsed())
 		if err != nil {
 			return nil, err

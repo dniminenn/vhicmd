@@ -496,3 +496,20 @@ func GetVMNameByID(computeURL, token, vmID string) (string, error) {
 	}
 	return vm.Name, nil
 }
+
+// GetVMBootVolume returns the boot volume ID for a VM
+func GetVMBootVolume(computeURL, token, vmID string) (string, error) {
+	// First get VM details to access attached volumes
+	vmDetails, err := GetVMDetails(computeURL, token, vmID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get VM details: %v", err)
+	}
+
+	// Look for the boot volume (usually the first one)
+	if len(vmDetails.OSExtendedVolumesVolumesAttached) == 0 {
+		return "", fmt.Errorf("VM has no attached volumes")
+	}
+
+	// Return the first volume ID (most likely the boot volume)
+	return vmDetails.OSExtendedVolumesVolumesAttached[0].ID, nil
+}

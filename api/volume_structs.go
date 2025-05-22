@@ -142,3 +142,34 @@ type AddProjectAccessRequest struct {
 		Project string `json:"project"`
 	} `json:"addProjectAccess"`
 }
+
+// VolumeUploadRequest represents a request to upload a volume to image
+type VolumeUploadRequest struct {
+	OsVolumeUploadImage OsVolumeUploadImage `json:"os-volume_upload_image"`
+}
+
+// OsVolumeUploadImage contains parameters for uploading a volume to image
+type OsVolumeUploadImage struct {
+	ImageName       string `json:"image_name"`
+	Force           bool   `json:"force"`
+	DiskFormat      string `json:"disk_format"`
+	ContainerFormat string `json:"container_format"`
+}
+
+// VolumeUploadResponse represents the response from uploading a volume to image
+type VolumeUploadResponse struct {
+	OsVolumeUploadImage struct {
+		Status             string      `json:"status"`
+		ImageName          string      `json:"image_name"`
+		DiskFormat         string      `json:"disk_format"`
+		ContainerFormat    string      `json:"container_format"`
+		Visibility         string      `json:"visibility"`
+		UpdatedAt          string      `json:"updated_at"`
+		ImageID            string      `json:"image_id"`
+		DisplayDescription string      `json:"display_description"`
+		ID                 string      `json:"id"`
+		Size               int         `json:"size"`
+		VolumeType         interface{} `json:"volume_type"` // Can be string or object
+		Protected          bool        `json:"protected"`
+	} `json:"os-volume_upload_image"`
+}

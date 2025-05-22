@@ -113,8 +113,10 @@ After starting, use 'confirm' to accept or 'revert' to cancel.`,
 
 		fmt.Printf("Started flavor change for VM %s to %s\n", vmID, flavor)
 		fmt.Printf("Once the change is ready, use either:\n")
-		fmt.Printf("  - 'update vm flavor confirm %s' to accept the change\n", vmID)
-		fmt.Printf("  - 'update vm flavor revert %s' to cancel the change\n", vmID)
+		fmt.Printf("  - 'vhicmd update vm flavor confirm %s' to accept the change\n", vmID)
+		fmt.Printf("  - 'vhicmd update vm flavor revert %s' to cancel the change\n", vmID)
+		fmt.Printf("It is possible that the confirm call will be automatically accepted depending on specific admin settings.\n")
+		// TODO: Add a check to see if the flavor change is already confirmed?
 		return nil
 	},
 }
@@ -288,6 +290,42 @@ var imageMemberStatusCmd = &cobra.Command{
 	},
 }
 
+var imageTypeCmd = &cobra.Command{
+	Use:   "machine-type <image-id> <type>",
+	Short: "Update VM image machine type (i440fx/q35)",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		imageID := args[0]
+		imageType := strings.ToLower(args[1])
+
+		if imageType != "i440fx" && imageType != "q35" {
+			return fmt.Errorf("type must be either 'i440fx' or 'q35'")
+		}
+
+		imageURL, err := validateTokenEndpoint(tok, "image")
+		if err != nil {
+			return err
+		}
+
+		id, err := api.GetImageIDByName(imageURL, tok.Value, imageID)
+		if err == nil {
+			imageID = id
+		}
+
+		if imageType == "i440fx" {
+			err = api.SetImageI440fx(imageURL, tok.Value, imageID)
+		} else {
+			err = api.SetImageQ35(imageURL, tok.Value, imageID)
+		}
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Updated image %s to use %s machine type\n", imageID, imageType)
+		return nil
+	},
+}
+
 var volumeAttachCmd = &cobra.Command{
 	Use:   "attach-volume <vm-id> <volume-id>",
 	Short: "Attach a volume to a VM",
@@ -430,6 +468,7 @@ func init() {
 	// Image subcommands
 	updateImageCmd.AddCommand(imageVisibilityCmd)
 	updateImageCmd.AddCommand(imageMemberStatusCmd)
+	updateImageCmd.AddCommand(imageTypeCmd)
 
 	// Add to update command
 	updateCmd.AddCommand(updateVMCmd)
