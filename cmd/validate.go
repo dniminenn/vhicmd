@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/jessegalley/vhicmd/internal/template"
 	"github.com/spf13/cobra"
@@ -16,11 +15,6 @@ var validateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		templatePath := args[0]
 
-		// Check if template file exists
-		if _, err := os.Stat(templatePath); os.IsNotExist(err) {
-			return fmt.Errorf("template file not found: %s", templatePath)
-		}
-
 		// Parse the ci-data
 		ciData, err := template.ParseKeyValueString(flagValidateCIData)
 		if err != nil {
@@ -33,7 +27,7 @@ var validateCmd = &cobra.Command{
 		}
 
 		// Read template file
-		rawTemplate, err := os.ReadFile(templatePath)
+		rawTemplate, err := fetchFileOrURL(templatePath)
 		if err != nil {
 			return fmt.Errorf("failed to read template file: %v", err)
 		}

@@ -1,11 +1,9 @@
-/*
-Copyright © 2024 jesse galley jesse.galley@gmail.com
-*/
 package cmd
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jessegalley/vhicmd/api"
@@ -24,6 +22,7 @@ var (
 	}
 
 	cfgFile   string
+	rcDirFlag string
 	tok       api.Token
 	debugMode bool
 )
@@ -66,12 +65,12 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 	rootCmd.SetUsageTemplate(helpTemplate)
 	cobra.OnInitialize(initConfig)
 
-	//rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "Enable debug mode")
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 	rootCmd.PersistentFlags().StringP("host", "H", "", "VHI host to connect to")
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.vhirc)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file (default is $HOME/.vhirc)")
+	rootCmd.PersistentFlags().StringVar(&rcDirFlag, "rc", "", "RC directory for config and token (overrides VHICMD_RCDIR)")
+
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if cmd.Name() == "version" ||
 			cmd.Name() == "validate" {
@@ -110,6 +109,27 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 }
 
 func initConfig() {
+	// Handle RC directory
+	if rcDirFlag != "" {
+		// Set RC dir from flag
+		os.Setenv("VHICMD_RCDIR", rcDirFlag)
+		// Export to shell session
+		fmt.Printf("Run this to save RC dir for THIS shell session:\n")
+		fmt.Printf("export VHICMD_RCDIR=%s\n\n", rcDirFlag)
+	}
+
+	// If the config flag is set, it overrides any RC directory
+	if cfgFile == "" && rcDirFlag != "" {
+		// Construct config path from RC directory
+		cfgFile = filepath.Join(rcDirFlag, ".vhirc")
+	}
+
+	// Initialize token file
+	if err := api.InitTokenFile(cfgFile); err != nil {
+		fmt.Printf("Error initializing token file: %v\n", err)
+		os.Exit(1)
+	}
+
 	viper.AutomaticEnv()
 	v, err := config.InitConfig(cfgFile)
 	if err != nil {
@@ -118,4 +138,10 @@ func initConfig() {
 	// Store viper instance if needed
 	viper.Reset()
 	*viper.GetViper() = *v
+
+	// Debug info if needed
+	if debugMode {
+		fmt.Printf("Config file: %s\n", v.ConfigFileUsed())
+		fmt.Printf("Token file: %s\n", api.TokenFile)
+	}
 }

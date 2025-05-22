@@ -1,10 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/jessegalley/vhicmd/internal/httpclient"
@@ -408,6 +410,116 @@ func UpdateImageMemberStatus(imageURL, token, imageID, memberID, status string) 
 
 	if apiResp.ResponseCode != 200 {
 		return fmt.Errorf("update member status failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	}
+
+	return nil
+}
+
+// DownloadImage downloads an image to local storage
+func DownloadImage(imageURL, token, imageID, outputPath string) error {
+	url := fmt.Sprintf("%s/v2/images/%s/file", imageURL, imageID)
+
+	resp, err := httpclient.SendRequestWithToken("GET", url, token, nil)
+	if err != nil {
+		return fmt.Errorf("failed to download image: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("download failed [%d]: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %v", err)
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to write image data: %v", err)
+	}
+
+	return nil
+}
+
+// UpdateImageProperties updates image properties using PATCH
+func UpdateImageProperties(imageURL, token, imageID string, properties map[string]string) error {
+	url := fmt.Sprintf("%s/v2/images/%s", imageURL, imageID)
+
+	// Build patch document
+	patches := make([]map[string]interface{}, 0)
+	for key, value := range properties {
+		patch := map[string]interface{}{
+			"op":    "add",
+			"path":  "/" + key,
+			"value": value,
+		}
+		patches = append(patches, patch)
+	}
+
+	apiResp, err := callPATCH(url, token, patches)
+	if err != nil {
+		return fmt.Errorf("failed to update image properties: %v", err)
+	}
+
+	if apiResp.ResponseCode != 200 {
+		return fmt.Errorf("update properties failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	}
+
+	return nil
+}
+
+func SetImageI440fx(imageURL, token, imageID string) error {
+	url := fmt.Sprintf("%s/v2/images/%s", imageURL, imageID)
+
+	// Use JSON Patch format with correct content type
+	patch := []map[string]interface{}{
+		{
+			"op":    "add",
+			"path":  "/hw_machine_type",
+			"value": "pc",
+		},
+	}
+
+	jsonData, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("error marshaling patch: %v", err)
+	}
+
+	resp, err := httpclient.SendImagePatch(url, token, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to set i440fx machine type: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("set i440fx failed [%d]: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
+}
+
+func SetImageQ35(imageURL, token, imageID string) error {
+	url := fmt.Sprintf("%s/v2/images/%s", imageURL, imageID)
+
+	patch := []map[string]interface{}{
+		{
+			"op":    "add",
+			"path":  "/hw_machine_type",
+			"value": "q35",
+		},
+	}
+
+	apiResp, err := callPATCH(url, token, patch)
+	if err != nil {
+		return fmt.Errorf("failed to set q35 machine type: %v", err)
+	}
+
+	if apiResp.ResponseCode != 200 {
+		return fmt.Errorf("set q35 failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
 	}
 
 	return nil
