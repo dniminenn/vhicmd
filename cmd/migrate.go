@@ -48,6 +48,31 @@ var migrateVMCmd = &cobra.Command{
     --size 20 \
     --shutdown`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Preemptive reauth to ensure token doesn't expire during migration
+		user := viper.GetString("username")
+		pass := viper.GetString("password")
+		domain := viper.GetString("domain")
+		project := viper.GetString("project")
+
+		if user != "" && pass != "" && domain != "" && project != "" {
+			host := viper.GetString("host")
+			if host == "" {
+				hostFlag, _ := cmd.Flags().GetString("host")
+				host = hostFlag
+			}
+			if host != "" {
+				// Force reauth to get a fresh token
+				_, err := api.Authenticate(host, domain, project, user, pass, true)
+				if err != nil {
+					return fmt.Errorf("preemptive reauth failed: %v", err)
+				}
+				tok, err = api.LoadTokenStruct(host)
+				if err != nil {
+					return fmt.Errorf("failed to load token after reauth: %v", err)
+				}
+			}
+		}
+
 		computeURL, err := validateTokenEndpoint(tok, "compute")
 		if err != nil {
 			return err
@@ -235,7 +260,7 @@ var migrateVMCmd = &cobra.Command{
 			}
 
 			fmt.Printf("Creating volume from secondary image...\n")
-			volumeResp, err := api.CreateVolumeFromImage(storageURL, tok.Value, secondaryImageID, fmt.Sprintf("secondary-%s", migrateFlagVMName))
+			volumeResp, err := api.CreateVolumeFromImage(storageURL, tok.Value, secondaryImageID, fmt.Sprintf("secondary-%s", migrateFlagVMName), info.Size()/(1024*1024*1024))
 			if err != nil {
 				return fmt.Errorf("failed to create volume from secondary image: %v", err)
 			}

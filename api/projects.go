@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
 
 // ProjectListResponse is the JSON structure returned by GET /v3/projects
@@ -56,7 +57,7 @@ func GetProjectNameByID(identityUrl, token, projectID string) (string, error) {
 func GetProjectIDByName(identityUrl, token, projectName string) (string, error) {
 	var result ProjectListResponse
 
-	apiResp, err := callGET(fmt.Sprintf("%s/projects?name=%s", identityUrl, projectName), token)
+	apiResp, err := callGET(fmt.Sprintf("%s/projects?name=%s", identityUrl, url.QueryEscape(projectName)), token)
 	if err != nil {
 		return "", fmt.Errorf("failed to get project ID: %v", err)
 	}

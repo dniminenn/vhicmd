@@ -203,12 +203,14 @@ func loadTokenStore() (TokenStore, error) {
 }
 
 // Authenticate uses domain/project names, calls the auth token API, and returns the token on success.
-func Authenticate(host, domain, project, username, password string) (string, error) {
-	// Attempt to load an existing token if it's valid
-	existingToken, err := LoadTokenStruct(host)
-	if err == nil && project == existingToken.Project {
-		fmt.Printf("Using existing token for %s, project %s\n", host, project)
-		return existingToken.Value, nil
+func Authenticate(host, domain, project, username, password string, force bool) (string, error) {
+	// Only check existing token if not forcing reauth
+	if !force {
+		existingToken, err := LoadTokenStruct(host)
+		if err == nil && project == existingToken.Project {
+			fmt.Printf("Using existing token for %s, project %s\n", host, project)
+			return existingToken.Value, nil
+		}
 	}
 
 	// Not found, expired, or user wants a different project -> do a fresh authentication

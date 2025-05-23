@@ -99,9 +99,30 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 		tok, err = api.LoadTokenStruct(host)
 		if err != nil {
 			if err.Error() == "token for "+host+" is expired" {
-				return fmt.Errorf("the auth token for '%s' is expired; re-authenticate using 'vhicmd auth'", host)
+				// Try to reauth using saved credentials
+				user := viper.GetString("username")
+				pass := viper.GetString("password")
+				domain := viper.GetString("domain")
+				project := viper.GetString("project")
+
+				if user == "" || pass == "" || domain == "" || project == "" {
+					return fmt.Errorf("the auth token for '%s' is expired; re-authenticate using 'vhicmd auth'", host)
+				}
+
+				_, err = doAuth(host, domain, project, user, pass)
+				if err != nil {
+					return fmt.Errorf("automatic reauth failed: %v", err)
+				}
+
+				// Reload token after successful reauth
+				tok, err = api.LoadTokenStruct(host)
+				if err != nil {
+					return fmt.Errorf("failed to load token after reauth: %v", err)
+				}
+				fmt.Printf("Token expired; reauth successful for host '%s'\n", host)
+			} else {
+				return fmt.Errorf("no valid auth token found on disk for host '%s'; run 'vhicmd auth' first", host)
 			}
-			return fmt.Errorf("no valid auth token found on disk for host '%s'; run 'vhicmd auth' first", host)
 		}
 
 		return nil

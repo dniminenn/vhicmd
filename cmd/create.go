@@ -271,7 +271,14 @@ var createVolumeCmd = &cobra.Command{
 				return fmt.Errorf("failed to get image ID: %v", err)
 			}
 
-			resp, err := api.CreateVolumeFromImage(storageURL, tok.Value, imageID, flagVolumeName)
+			imageSize, err := api.GetImageSize(imageURL, tok.Value, imageID)
+			if err != nil {
+				return fmt.Errorf("failed to get image size: %v", err)
+			}
+			// Round up to nearest GB
+			volumeSize := int((imageSize + 1024*1024*1024 - 1) / (1024 * 1024 * 1024))
+
+			resp, err := api.CreateVolumeFromImage(storageURL, tok.Value, imageID, flagVolumeName, int64(volumeSize))
 			if err != nil {
 				return err
 			}
@@ -390,7 +397,10 @@ func init() {
 	createVolumeCmd.Flags().StringVar(&flagVolumeImage, "image", "", "Image ID to create volume from")
 
 	createVolumeCmd.MarkFlagRequired("name")
-	createVolumeCmd.MarkFlagRequired("size")
+	// Only require size if not creating from image
+	if flagVolumeImage == "" {
+		createVolumeCmd.MarkFlagRequired("size")
+	}
 
 	// Flags for create image
 	createImageCmd.Flags().StringVar(&flagImageFile, "file", "", "Path to the image file")
