@@ -98,16 +98,32 @@ var deleteVolumeCmd = &cobra.Command{
 }
 
 var deletePortCmd = &cobra.Command{
-	Use:     "port <port_id>",
+	Use:     "port <port_id_or_mac>",
 	Aliases: []string{"nic", "interface"},
-	Short:   "Delete a port",
+	Short:   "Delete a port by UUID or MAC address",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		portID := args[0]
+		identifier := args[0]
 
 		networkURL, err := validateTokenEndpoint(tok, "network")
 		if err != nil {
 			return err
+		}
+
+		var portID string
+		if err := validateMAC(identifier); err == nil {
+			queryParams := map[string]string{"mac_address": identifier}
+			resp, err := api.ListPorts(networkURL, tok.Value, queryParams)
+			if err != nil {
+				return err
+			}
+			if len(resp.Ports) == 0 {
+				return fmt.Errorf("no port found with MAC address %s", identifier)
+			}
+			portID = resp.Ports[0].ID
+		} else {
+			// Assume it's a UUID
+			portID = identifier
 		}
 
 		err = api.DeletePort(networkURL, tok.Value, portID)
@@ -116,7 +132,6 @@ var deletePortCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Port %s deleted\n", portID)
-
 		return nil
 	},
 }

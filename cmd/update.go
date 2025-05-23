@@ -112,11 +112,17 @@ After starting, use 'confirm' to accept or 'revert' to cancel.`,
 		}
 
 		fmt.Printf("Started flavor change for VM %s to %s\n", vmID, flavor)
+		vm, err := api.GetVMDetails(computeURL, tok.Value, vmID)
+		if err != nil {
+			return err
+		}
+		if vm.Status == "SHUTOFF" {
+			fmt.Printf("VM is currently shut down. The flavor change should be automatically confirmed in a few minutes.\n")
+		}
 		fmt.Printf("Once the change is ready, use either:\n")
 		fmt.Printf("  - 'vhicmd update vm flavor confirm %s' to accept the change\n", vmID)
 		fmt.Printf("  - 'vhicmd update vm flavor revert %s' to cancel the change\n", vmID)
 		fmt.Printf("It is possible that the confirm call will be automatically accepted depending on specific admin settings.\n")
-		// TODO: Add a check to see if the flavor change is already confirmed?
 		return nil
 	},
 }
@@ -454,6 +460,8 @@ func init() {
 	updateVMCmd.AddCommand(vmFlavorCmd)
 	updateVMCmd.AddCommand(attachPortCmd)
 	updateVMCmd.AddCommand(detachPortCmd)
+	updateVMCmd.AddCommand(volumeAttachCmd)
+	updateVMCmd.AddCommand(volumeDetachCmd)
 
 	// Flavor subcommands
 	vmFlavorCmd.AddCommand(flavorStartCmd)

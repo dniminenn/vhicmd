@@ -355,9 +355,12 @@ var listPortsCmd = &cobra.Command{
 		if macAddress, _ := cmd.Flags().GetString("mac-address"); macAddress != "" {
 			queryParams["mac_address"] = macAddress
 		}
-		if status, _ := cmd.Flags().GetString("status"); status != "" {
-			queryParams["status"] = status
+		status, _ := cmd.Flags().GetString("status")
+		if status == "" {
+			fmt.Printf("No status provided, defaulting to DOWN, use --status to filter.\n")
+			status = "DOWN"
 		}
+		queryParams["status"] = status
 
 		resp, err := api.ListPorts(networkURL, tok.Value, queryParams)
 		if err != nil {
@@ -372,9 +375,12 @@ var listPortsCmd = &cobra.Command{
 
 		var portList []responseparser.Port
 		for _, p := range resp.Ports {
-			vmName, err := api.GetVMNameByID(computeURL, tok.Value, p.DeviceID)
-			if err != nil {
-				vmName = p.DeviceID
+			vmName := p.DeviceID
+			if p.DeviceID != "" {
+				name, err := api.GetVMNameByID(computeURL, tok.Value, p.DeviceID)
+				if err == nil {
+					vmName = name
+				}
 			}
 
 			ips := make([]string, 0)
@@ -393,6 +399,12 @@ var listPortsCmd = &cobra.Command{
 			})
 		}
 		sort.Slice(portList, func(i, j int) bool {
+			if portList[i].Status == "DOWN" && portList[j].Status != "DOWN" {
+				return true
+			}
+			if portList[i].Status != "DOWN" && portList[j].Status == "DOWN" {
+				return false
+			}
 			return natsort.Compare(portList[i].DeviceID, portList[j].DeviceID)
 		})
 

@@ -251,7 +251,7 @@ func doAuth(host, domain, project, username, password string) (string, error) {
 	if flagUseIds {
 		authToken, authErr = api.AuthenticateById(host, domain, project, username, password)
 	} else {
-		authToken, authErr = api.Authenticate(host, domain, project, username, password)
+		authToken, authErr = api.Authenticate(host, domain, project, username, password, false)
 	}
 	if authErr != nil {
 		return "", fmt.Errorf("couldn't get auth token, %v", authErr)

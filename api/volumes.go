@@ -356,9 +356,11 @@ func UploadVolumeToImage(storageURL, token, volumeID, imageName string) (VolumeU
 }
 
 // CreateVolumeFromImage creates a new volume from an image
-func CreateVolumeFromImage(storageURL, token, imageID, name string) (CreateVolumeResponse, error) {
+func CreateVolumeFromImage(storageURL, token, imageID, name string, size int64) (CreateVolumeResponse, error) {
 	request := CreateVolumeRequest{}
 	request.Volume.Name = name
 	request.Volume.ImageRef = imageID
+	request.Volume.Size = int(size)
+	request.Volume.VolumeType = "nvme_ec7_2" // default is 3rep, have to override
 	return CreateVolume(storageURL, token, request)
 }

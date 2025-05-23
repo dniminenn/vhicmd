@@ -396,6 +396,48 @@ func RebootVM(computeURL, token, vmID string, rebootType string) error {
 	}
 }
 
+// PauseVM sends a request to pause a VM
+func PauseVM(computeURL, token, vmID string) error {
+	url := fmt.Sprintf("%s/servers/%s/action", computeURL, vmID)
+
+	request := struct {
+		Pause *struct{} `json:"pause"`
+	}{
+		Pause: &struct{}{},
+	}
+
+	resp, err := callPOST(url, token, request)
+	if err != nil {
+		return fmt.Errorf("failed to send pause request: %v", err)
+	}
+	if resp.ResponseCode != 202 {
+		return fmt.Errorf("pause request failed: %s", resp.Response)
+	}
+
+	return nil
+}
+
+// UnpauseVM sends a request to unpause a VM
+func UnpauseVM(computeURL, token, vmID string) error {
+	url := fmt.Sprintf("%s/servers/%s/action", computeURL, vmID)
+
+	request := struct {
+		Unpause *struct{} `json:"unpause"`
+	}{
+		Unpause: &struct{}{},
+	}
+
+	resp, err := callPOST(url, token, request)
+	if err != nil {
+		return fmt.Errorf("failed to send unpause request: %v", err)
+	}
+	if resp.ResponseCode != 202 {
+		return fmt.Errorf("unpause request failed: %s", resp.Response)
+	}
+
+	return nil
+}
+
 // WaitForStatus waits for a VM to reach a given status or returns error on timeout/error
 func WaitForStatus(computeURL, token, vmID string, targetStatus string) (VMDetail, error) {
 	maxAttempts := 30
