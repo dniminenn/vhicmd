@@ -1,6 +1,6 @@
 # vhicmd
 
-A command-line utility for interacting with VHI (Virtuozzo Hybrid Infrastructure) APIs. This tool provides a streamlined interface for managing virtual machines, volumes, networks, images, and other resources in VHI environments.
+A command-line utility for interacting with VHI (Virtuozzo Hybrid Infrastructure) APIs. This tool provides a streamlined interface for managing virtual machines, volumes, networks, images, and other resources in VHI environments. vhicmd requires no external dependencies (VDDK, virt-v2v, nbdcopy, etc) - it handles the entire migration process by leveraging the Virtuozzo API.
 
 ![vhicmd help](docs/vhicmd-help.png)
 
@@ -22,6 +22,23 @@ A command-line utility for interacting with VHI (Virtuozzo Hybrid Infrastructure
 make
 cd bin && mv vhicmd /usr/local/bin
 ```
+
+## RC Directory
+
+For shared systems or when you need to use different configurations, you can specify an RC directory:
+
+```bash
+# Set for current session
+export VHICMD_RCDIR=/path/to/rc/dir
+
+# Or use --rc flag
+vhicmd --rc /path/to/rc/dir <command>
+```
+
+This will store the config file (`.vhirc`) and token in the specified directory instead of the default `~/.vhirc`. This is useful for:
+- Preventing collisions on shared systems
+- Using different configurations for different environments
+- Running commands as different users
 
 ## Configuration
 
@@ -104,6 +121,25 @@ vhicmd details port <port-id>
 ```
 
 ![vhicmd details](docs/vhicmd-show-vm.png)
+
+Download resources:
+```bash
+vhicmd download image <image-id> [--output path]
+vhicmd download volume <volume-id> [--output path]
+```
+
+Manage VM state:
+```bash
+vhicmd pause <vm-id>            # Pause VM
+vhicmd unpause <vm-id>          # Unpause VM
+vhicmd reboot soft <vm-id>      # Soft reboot
+vhicmd reboot hard <vm-id>      # Hard reboot
+```
+
+View usage information:
+```bash
+vhicmd usage                    # Show resource usage
+```
 
 ### Virtual Machine Management
 
@@ -230,7 +266,6 @@ vhicmd create volume --name <name> \
   --type <volume-type> \
   --description <description>
 ```
-
 Delete volume:
 ```bash
 vhicmd delete volume <volume-id>
@@ -286,14 +321,21 @@ vhicmd migrate vm \
   --networks <networks> \
   --mac <mac-addresses> \
   --size <size-GB> \
-  [--shutdown] \
-  [--disk-bus sata|scsi|virtio]
+  [--disk-bus sata|scsi|virtio] \
+  [--secondary-vmdk <path>]
 ```
 
 Find VMDK files:
 ```bash
 vhicmd migrate find <pattern> [--single]
 ```
+
+The migration process supports:
+- Automatic conversion of VMware VMDK to KVM-compatible format
+- Primary VMDK as boot disk
+- Optional secondary VMDK that will be attached as an additional volume
+- Network interface preservation with MAC addresses
+- Unmanaged networks in VHI
 
 ## Global Flags
 
@@ -308,3 +350,5 @@ vhicmd migrate find <pattern> [--single]
 - `vhicmd` supports networks with IPAM disabled which allows manually specifying MAC addresses as a normal user when creating a port
 - When using templates, all variables in the template must be provided in the ci-data parameter
 - Template validation strictly enforces that all variables are accounted for
+
+
