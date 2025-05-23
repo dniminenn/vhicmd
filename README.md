@@ -241,10 +241,20 @@ vhicmd update vm detach-port <vm-id> <port-id>
 
 ### Template Support
 
+The templating engine supports variable substitution in cloud-init scripts and bash scripts using the `{{%variable%}}` syntax. Variables are provided via the `--ci-data` flag in `key:value` format.
+
 Validate template:
 ```bash
 vhicmd validate <template-file> --ci-data 'key:value,key:value' [--preview]
 ```
+
+Template Features:
+- Simple `{{%variable%}}` syntax
+- Strict validation of all variables
+- Support for quoted values with commas
+- Newline or comma-delimited key-value pairs
+- Preview mode to see processed output
+- Automatic validation before VM creation
 
 #### Bash Script Template Example
 
