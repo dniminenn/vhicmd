@@ -2,7 +2,44 @@
 
 A command-line utility for interacting with VHI (Virtuozzo Hybrid Infrastructure) APIs. This tool provides a streamlined interface for managing virtual machines, volumes, networks, images, and other resources in VHI environments. vhicmd requires no external dependencies (VDDK, virt-v2v, nbdcopy, etc) - it handles the entire migration process by leveraging the Virtuozzo API.
 
-![vhicmd help](docs/vhicmd-help.png)
+```bash
+Usage:
+  vhicmd [command]
+
+Available Commands (aliases):
+  add                                 Add relationships between resources
+  auth                                Get an authentication token from VHI.
+  bootable                            Set the bootable flag for a volume
+  catalog (cat)                       Fetch and display the OpenStack service catalog
+  completion                          Generate the autocompletion script for the specified shell
+  config (cfg | conf)                 Manage vhicmd configuration
+  create (new)                        Create resources like VMs or volumes
+  delete (rm | del)                   Delete resources
+  details (show)                      Show details of resources
+  download (dl)                       Download resources
+  help                                Help about any command
+  hosts                               List compute hosts and their details
+  list (ls)                           List various objects in OpenStack/VHI (domains, projects, etc.)
+  migrate (mig)                       Migrate resources from VMWare to VHI
+  netboot                             Configure netboot settings
+  pause                               Pause a VM
+  reboot                              Reboot a virtual machine
+  switch-project (sw)                 Switch to a different project using saved credentials
+  unpause                             Unpause a VM
+  update (set)                        Update resource attributes
+  usage                               Show resource usage statistics
+  validate                            Validate and preview a template with provided variables
+  version (v)                         Print build information
+
+Flags:
+      --config string   Config file (default is $HOME/.vhirc)
+      --debug           Enable debug mode
+  -h, --help            help for vhicmd
+  -H, --host string     VHI host to connect to
+      --rc string       RC directory for config and token (overrides VHICMD_RCDIR)
+
+Use "vhicmd [command] --help" for more information about a command.
+```
 
 ## Features
 
