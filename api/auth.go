@@ -31,35 +31,42 @@ type AuthPayload struct {
 	Auth Auth `json:"auth"`
 }
 
+// Auth structure for the authentication request
 type Auth struct {
 	Identity Identity `json:"identity"`
 	Scope    Scope    `json:"scope"`
 }
 
+// Identity structure for the authentication request
 type Identity struct {
 	Methods  []string `json:"methods"`
 	Password Password `json:"password"`
 }
 
+// Password structure for the authentication request
 type Password struct {
 	User User `json:"user"`
 }
 
+// User structure for the authentication request
 type User struct {
 	Name     string `json:"name"`
 	Domain   Domain `json:"domain"`
 	Password string `json:"password"`
 }
 
+// Domain structure for the authentication request
 type Domain struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
 }
 
+// Scope structure for the authentication request
 type Scope struct {
 	Project Project `json:"project"`
 }
 
+// Project structure for the authentication request
 type Project struct {
 	Name   string `json:"name,omitempty"`
 	Domain Domain `json:"domain"`
@@ -89,6 +96,7 @@ func newAuthPayload(domain Domain, project, user, password string) AuthPayload {
 	}
 }
 
+// AuthResponse structure for the authentication response
 type AuthResponse struct {
 	Token struct {
 		Methods []string `json:"methods"`
@@ -195,12 +203,14 @@ func loadTokenStore() (TokenStore, error) {
 }
 
 // Authenticate uses domain/project names, calls the auth token API, and returns the token on success.
-func Authenticate(host, domain, project, username, password string) (string, error) {
-	// Attempt to load an existing token if it's valid
-	existingToken, err := LoadTokenStruct(host)
-	if err == nil && project == existingToken.Project {
-		fmt.Printf("Using existing token for %s, project %s\n", host, project)
-		return existingToken.Value, nil
+func Authenticate(host, domain, project, username, password string, force bool) (string, error) {
+	// Only check existing token if not forcing reauth
+	if !force {
+		existingToken, err := LoadTokenStruct(host)
+		if err == nil && project == existingToken.Project {
+			fmt.Printf("Using existing token for %s, project %s\n", host, project)
+			return existingToken.Value, nil
+		}
 	}
 
 	// Not found, expired, or user wants a different project -> do a fresh authentication
@@ -315,23 +325,66 @@ func AuthenticateById(host, domainID, project, username, password string) (strin
 	return apiResp.TokenHeader, nil
 }
 
-// Initialize TokenFile path on module load
+// GetTokenFilePath returns the path to the token file
+func GetTokenFilePath() (string, error) {
+	// Check VHICMD_RCDIR env var first
+	if rcDir := os.Getenv("VHICMD_RCDIR"); rcDir != "" {
+		return filepath.Join(rcDir, ".vhicmd.token"), nil
+	}
+
+	// Otherwise use original user's home directory
+	var home string
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
+		out, err := exec.Command("getent", "passwd", sudoUser).Output()
+		if err == nil {
+			home = strings.Split(string(out), ":")[5]
+		}
+	}
+
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get user home directory: %v", err)
+		}
+	}
+
+	return filepath.Join(home, ".vhicmd.token"), nil
+}
+
+// InitTokenFile initializes the token file path based on RC directory
+func InitTokenFile(rcFile string) error {
+	// If an RC file is specified, use the same directory for token file
+	if rcFile != "" {
+		TokenFile = filepath.Join(filepath.Dir(rcFile), ".vhicmd.token")
+		return nil
+	}
+
+	// Otherwise use default path
+	tokenPath, err := GetTokenFilePath()
+	if err != nil {
+		return err
+	}
+	TokenFile = tokenPath
+	return nil
+}
+
 func init() {
-    var home string
-    if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
-        out, err := exec.Command("getent", "passwd", sudoUser).Output()
-        if err == nil {
-            home = strings.Split(string(out), ":")[5]
-        }
-    }
+	var home string
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
+		out, err := exec.Command("getent", "passwd", sudoUser).Output()
+		if err == nil {
+			home = strings.Split(string(out), ":")[5]
+		}
+	}
 
-    if home == "" {
-        var err error
-        home, err = os.UserHomeDir()
-        if err != nil {
-            panic(fmt.Errorf("failed to get user home directory: %v", err))
-        }
-    }
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			panic(fmt.Errorf("failed to get user home directory: %v", err))
+		}
+	}
 
-    TokenFile = filepath.Join(home, ".vhicmd.token")
+	TokenFile = ""
 }

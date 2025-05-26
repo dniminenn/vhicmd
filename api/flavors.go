@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // Flavor represents a single flavor object returned by the API.
@@ -17,6 +16,7 @@ type Flavor struct {
 	} `json:"links"`
 }
 
+// FlavorDetailResp represents the response for a single flavor detail request.
 type FlavorDetailResp struct {
 	Flavor struct {
 		ID          string            `json:"id"`
@@ -34,6 +34,7 @@ type FlavorDetailResp struct {
 	} `json:"flavor"`
 }
 
+// FlavorListResponse represents the response for listing flavors.
 type FlavorListResponse struct {
 	Flavors []Flavor `json:"flavors"`
 }
@@ -66,6 +67,7 @@ func ListFlavors(computeURL, token string, queryParams map[string]string) (Flavo
 	return result, nil
 }
 
+// GetFlavorDetails fetches the details of a single flavor from the stored compute URL
 func GetFlavorDetails(computeURL, token, flavorID string) (FlavorDetailResp, error) {
 	var result FlavorDetailResp
 
@@ -87,7 +89,41 @@ func GetFlavorDetails(computeURL, token, flavorID string) (FlavorDetailResp, err
 
 // The flavor names are not unique, so this function a single flavor if only one is found,
 // if multiple flavors or none are found, it returns an error.
+// func GetFlavorIDByName(computeURL, token, flavorName string) (string, error) {
+// 	if isUuid(flavorName) {
+// 		return flavorName, nil
+// 	}
+
+// 	flavors, err := ListFlavors(computeURL, token, nil)
+
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	var foundFlavors []Flavor
+
+// 	for _, flavor := range flavors.Flavors {
+// 		if strings.Contains(flavor.Name, flavorName) {
+// 			foundFlavors = append(foundFlavors, flavor)
+// 		}
+// 	}
+
+// 	if len(foundFlavors) == 0 {
+// 		return "", fmt.Errorf("no flavors found for name %s", flavorName)
+// 	}
+
+// 	if len(foundFlavors) > 1 {
+// 		return "", fmt.Errorf("multiple flavors found for name %s", flavorName)
+// 	}
+
+// 	return foundFlavors[0].ID, nil
+// }
+
 func GetFlavorIDByName(computeURL, token, flavorName string) (string, error) {
+	if isUuid(flavorName) {
+		return flavorName, nil
+	}
+
 	flavors, err := ListFlavors(computeURL, token, nil)
 
 	if err != nil {
@@ -97,7 +133,7 @@ func GetFlavorIDByName(computeURL, token, flavorName string) (string, error) {
 	var foundFlavors []Flavor
 
 	for _, flavor := range flavors.Flavors {
-		if strings.Contains(flavor.Name, flavorName) {
+		if flavor.Name == flavorName {
 			foundFlavors = append(foundFlavors, flavor)
 		}
 	}

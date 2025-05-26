@@ -82,7 +82,7 @@ func SendRequestWithToken(method, url, token string, body io.Reader) (*http.Resp
 	}
 
 	// Add headers
-	if method == "POST" && body != nil {
+	if (method == "POST" || method == "PATCH") && body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Accept", "application/json")
@@ -168,6 +168,23 @@ func SendLargePutRequest(url, token string, data io.Reader) (*http.Response, err
 	}
 
 	return resp, nil
+}
+
+func SendImagePatch(url, token string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("PATCH", url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/openstack-images-v2.1-json-patch")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", userAgent)
+	if token != "" {
+		req.Header.Set("X-Auth-Token", token)
+	}
+
+	client := &http.Client{Timeout: requestTimeout}
+	return client.Do(req)
 }
 
 // -- DEBUGGING --
