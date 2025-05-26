@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jessegalley/vhicmd/api"
@@ -27,8 +29,9 @@ import (
 
 // 'migrate' parent command
 var migrateCmd = &cobra.Command{
-	Use:   "migrate",
-	Short: "Migrate resources",
+	Use:     "migrate",
+	Aliases: []string{"mig"},
+	Short:   "Migrate resources from VMWare to VHI",
 }
 
 // 'migrate vm' subcommand
@@ -45,6 +48,31 @@ var migrateVMCmd = &cobra.Command{
     --size 20 \
     --shutdown`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Preemptive reauth to ensure token doesn't expire during migration
+		user := viper.GetString("username")
+		pass := viper.GetString("password")
+		domain := viper.GetString("domain")
+		project := viper.GetString("project")
+
+		if user != "" && pass != "" && domain != "" && project != "" {
+			host := viper.GetString("host")
+			if host == "" {
+				hostFlag, _ := cmd.Flags().GetString("host")
+				host = hostFlag
+			}
+			if host != "" {
+				// Force reauth to get a fresh token
+				_, err := api.Authenticate(host, domain, project, user, pass, true)
+				if err != nil {
+					return fmt.Errorf("preemptive reauth failed: %v", err)
+				}
+				tok, err = api.LoadTokenStruct(host)
+				if err != nil {
+					return fmt.Errorf("failed to load token after reauth: %v", err)
+				}
+			}
+		}
+
 		computeURL, err := validateTokenEndpoint(tok, "compute")
 		if err != nil {
 			return err
@@ -103,6 +131,43 @@ var migrateVMCmd = &cobra.Command{
 			flavorRef = fid
 		}
 
+		// --- BEGIN SKETCHY STUFF ---
+		// Wake up NFS
+		// ---------------------------
+		if strings.HasPrefix(migrateFlagVMDKPath, "/mnt/vmdk/") {
+			cmd := exec.Command("dd", "if="+migrateFlagVMDKPath, "of=/dev/null", "bs=1M", "count=1", "status=progress")
+			if err := cmd.Start(); err != nil {
+				return fmt.Errorf("failed to start warmup read: %v", err)
+			}
+
+			time.Sleep(2 * time.Second)
+
+			psCmd := exec.Command("ps", "-p", fmt.Sprintf("%d", cmd.Process.Pid), "-o", "state=,cmd=")
+			output, err := psCmd.Output()
+			if err != nil {
+				cmd.Process.Kill()
+				return fmt.Errorf("failed to check process state: %v", err)
+			}
+
+			parts := strings.Fields(string(output))
+			if len(parts) >= 2 {
+				state := parts[0]
+				cmdline := strings.Join(parts[1:], " ")
+
+				// Kill if stuck
+				if state == "D" && strings.Contains(cmdline, "dd") && strings.Contains(cmdline, migrateFlagVMDKPath) {
+					cmd.Process.Signal(syscall.SIGKILL)
+					cmd.Wait()
+
+					// Quick retry
+					retryCmd := exec.Command("dd", "if="+migrateFlagVMDKPath, "of=/dev/null", "bs=1M", "count=1")
+					retryCmd.Run()
+				}
+			}
+		}
+		// --- END SKETCHY STUFF ---
+		// ---------------------------
+
 		fmt.Printf("Creating temporary image for VM '%s'...\n", migrateFlagVMName)
 
 		file, err := os.Open(migrateFlagVMDKPath)
@@ -130,9 +195,16 @@ var migrateVMCmd = &cobra.Command{
 			return fmt.Errorf("failed to create/upload image: %v", err)
 		}
 
-		imageSize, err := api.GetImageSize(imageURL, tok.Value, imageID)
+		var imageSize int64
+		for i := 0; i < 3; i++ {
+			imageSize, err = api.GetImageSize(imageURL, tok.Value, imageID)
+			if err == nil {
+				break
+			}
+			time.Sleep(5 * time.Second)
+		}
 		if err != nil {
-			return fmt.Errorf("failed to get image size: %v", err)
+			return fmt.Errorf("failed to get image size after retries: %v", err)
 		}
 
 		imageSizeGB := int64(0)
@@ -144,6 +216,75 @@ var migrateVMCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\nImage created: %s\n", imageID)
+
+		if migrateFlagI440fx {
+			fmt.Printf("Setting i440fx machine type for image %s...\n", imageID)
+			if err := api.SetImageI440fx(imageURL, tok.Value, imageID); err != nil {
+				return fmt.Errorf("failed to set i440fx machine type: %v", err)
+			}
+		}
+
+		// Handle secondary disk if specified
+		var secondaryVolumeID string
+		if migrateFlagSecondaryVMDK != "" {
+			storageURL, err := validateTokenEndpoint(tok, "volumev3")
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("Creating temporary image for secondary disk...\n")
+
+			file, err := os.Open(migrateFlagSecondaryVMDK)
+			if err != nil {
+				return fmt.Errorf("failed to open secondary VMDK file: %v", err)
+			}
+			defer file.Close()
+
+			info, err := file.Stat()
+			if err != nil {
+				return fmt.Errorf("failed to stat secondary VMDK file: %v", err)
+			}
+
+			fmt.Printf("Starting upload of secondary disk %s (%d MB)\n", migrateFlagSecondaryVMDK, info.Size()/1024/1024)
+
+			imgReq := api.CreateImageRequest{
+				Name:         fmt.Sprintf("Secondary-%s", migrateFlagVMName),
+				ContainerFmt: "bare",
+				DiskFmt:      "vmdk",
+				Visibility:   "shared",
+			}
+
+			secondaryImageID, err := api.CreateAndUploadImage(imageURL, tok.Value, imgReq, file)
+			if err != nil {
+				return fmt.Errorf("failed to create/upload secondary image: %v", err)
+			}
+
+			fmt.Printf("Creating volume from secondary image...\n")
+			volumeResp, err := api.CreateVolumeFromImage(storageURL, tok.Value, secondaryImageID, fmt.Sprintf("secondary-%s", migrateFlagVMName), info.Size()/(1024*1024*1024))
+			if err != nil {
+				return fmt.Errorf("failed to create volume from secondary image: %v", err)
+			}
+
+			secondaryVolumeID = volumeResp.Volume.ID
+
+			fmt.Printf("Waiting for secondary volume to become available...\n")
+			err = api.WaitForVolumeStatus(storageURL, tok.Value, secondaryVolumeID, "available")
+			if err != nil {
+				return fmt.Errorf("failed waiting for secondary volume to become available: %v", err)
+			}
+
+			fmt.Printf("Deleting temporary secondary image %s...\n", secondaryImageID)
+			for i := 0; i < 3; i++ {
+				err = api.DeleteImage(imageURL, tok.Value, secondaryImageID)
+				if err == nil {
+					break
+				}
+				time.Sleep(5 * time.Second)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to delete temporary secondary image after retries: %v", err)
+			}
+		}
 
 		vmReq := api.CreateVMRequest{}
 		vmReq.Server.Name = migrateFlagVMName
@@ -176,6 +317,15 @@ var migrateVMCmd = &cobra.Command{
 		vmDetails, err := api.WaitForStatus(computeURL, tok.Value, vmResp.Server.ID, "ACTIVE")
 		if err != nil {
 			return fmt.Errorf("failed waiting for VM to become ACTIVE: %v", err)
+		}
+
+		// Attach secondary volume if we have one
+		if secondaryVolumeID != "" {
+			fmt.Printf("Attaching secondary volume to VM...\n")
+			err = api.AttachVolume(computeURL, tok.Value, vmDetails.ID, secondaryVolumeID)
+			if err != nil {
+				return fmt.Errorf("failed to attach secondary volume: %v", err)
+			}
 		}
 
 		netInfo := make([]map[string]interface{}, 0)
@@ -216,6 +366,8 @@ var migrateVMCmd = &cobra.Command{
 			})
 		}
 
+		api.RebootVM(computeURL, tok.Value, vmDetails.ID, "HARD")
+
 		// -- Not very reliable if the VM is hung since
 		// this only sends a soft os-stop signal, it takes
 		// ~5 minutes if acpid is not running in the VM.
@@ -227,9 +379,15 @@ var migrateVMCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Deleting temporary image %s...\n", imageID)
-		err = api.DeleteImage(imageURL, tok.Value, imageID)
+		for i := 0; i < 3; i++ {
+			err = api.DeleteImage(imageURL, tok.Value, imageID)
+			if err == nil {
+				break
+			}
+			time.Sleep(5 * time.Second)
+		}
 		if err != nil {
-			return fmt.Errorf("failed to delete temporary image: %v", err)
+			return fmt.Errorf("failed to delete temporary image after retries: %v", err)
 		}
 
 		summary := map[string]interface{}{
@@ -254,12 +412,26 @@ var migrateFindCmd = &cobra.Command{
 	Short: "Find a VMDK file matching the pattern in /mnt/vmdk",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		single := false
+		if migrateFindVMDKSingle {
+			single = true
+		}
+
 		pattern := args[0]
 
 		fmt.Printf("Searching for VMDK files matching '%s' in /mnt/vmdk...\n", pattern)
 		start := time.Now()
 
-		matches, err := findVMDKsParallel(pattern)
+		var matches []string
+		var err error
+
+		if single {
+			match, verr := findSingleVMDK(pattern)
+			err = verr
+			matches = []string{match}
+		} else {
+			matches, err = findVMDKs(pattern)
+		}
 		duration := time.Since(start)
 
 		fmt.Printf("\nSearch completed in %s\n", duration)
@@ -284,14 +456,17 @@ var migrateFindCmd = &cobra.Command{
 
 // Flags for migrate vm
 var (
-	migrateFlagVMName     string
-	migrateFlagVMDKPath   string
-	migrateFlagFlavorRef  string
-	migrateFlagNetworkCSV string
-	migrateFlagMacAddrCSV string
-	migrateFlagVMSize     int64
-	migrateFlagDiskBus    string
-	migrateFlagShutdown   bool
+	migrateFlagVMName        string
+	migrateFlagVMDKPath      string
+	migrateFlagFlavorRef     string
+	migrateFlagNetworkCSV    string
+	migrateFlagMacAddrCSV    string
+	migrateFlagVMSize        int64
+	migrateFlagDiskBus       string
+	migrateFlagShutdown      bool
+	migrateFindVMDKSingle    bool
+	migrateFlagI440fx        bool
+	migrateFlagSecondaryVMDK string
 )
 
 func init() {
@@ -303,6 +478,9 @@ func init() {
 	migrateVMCmd.Flags().Int64Var(&migrateFlagVMSize, "size", 0, "Optional: size in GB if extending the image")
 	migrateVMCmd.Flags().StringVar(&migrateFlagDiskBus, "disk-bus", "scsi", "Disk bus for the root volume, default: scsi")
 	migrateVMCmd.Flags().BoolVar(&migrateFlagShutdown, "shutdown", false, "Shut down the new VM after creation")
+	migrateVMCmd.Flags().BoolVar(&migrateFlagI440fx, "i440fx", false, "Set i440fx machine type for the image (centos 6)")
+	migrateVMCmd.Flags().StringVar(&migrateFlagSecondaryVMDK, "secondary-vmdk", "", "Local path to secondary VMDK file to attach as additional volume")
+	migrateFindCmd.Flags().BoolVar(&migrateFindVMDKSingle, "single", false, "Find a single VMDK file")
 
 	migrateCmd.AddCommand(migrateVMCmd)
 	migrateCmd.AddCommand(migrateFindCmd)

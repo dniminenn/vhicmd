@@ -2,13 +2,17 @@ package cmd
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -16,6 +20,7 @@ import (
 
 	"github.com/facette/natsort"
 	"github.com/jessegalley/vhicmd/api"
+	"github.com/jessegalley/vhicmd/internal/responseparser"
 	"golang.org/x/term"
 )
 
@@ -141,11 +146,24 @@ func validateTokenEndpoint(tok api.Token, endpoint string) (string, error) {
 // readAndEncodeUserData() reads the user data file at the given path
 // Commonly used for cloud-init scripts
 func readAndEncodeUserData(path string) (string, error) {
-	data, err := os.ReadFile(path)
+	data, err := fetchFileOrURL(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read user data file: %v", err)
+		return "", fmt.Errorf("failed to read user data: %v", err)
 	}
 	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+func readUserDataFile(path string) (string, error) {
+	data, err := fetchFileOrURL(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read user data: %v", err)
+	}
+	return string(data), nil
+}
+
+// encodeUserData base64 encodes the given string
+func encodeUserData(data string) (string, error) {
+	return base64.StdEncoding.EncodeToString([]byte(data)), nil
 }
 
 func validateMacAddr(mac string) error {
@@ -158,8 +176,26 @@ func validateMacAddr(mac string) error {
 	return nil
 }
 
-// findVMDKsParallel launches one goroutine per datastore in /mnt/vmdk
-func findVMDKsParallel(pattern string) ([]string, error) {
+// findSingleVMDK() searches for a single VMDK file in /mnt/vmdk
+// if multiple matches are found, an error is returned
+func findSingleVMDK(pattern string) (string, error) {
+	matches, err := findVMDKs(pattern)
+	if err != nil {
+		return "", err
+	}
+
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no matching VMDK files found")
+	}
+	if len(matches) > 1 {
+		return "", fmt.Errorf("multiple matching VMDK files found, be more specific")
+	}
+
+	return matches[0], nil
+}
+
+// findVMDKs launches one goroutine per datastore in /mnt/vmdk
+func findVMDKs(pattern string) ([]string, error) {
 	rootDir := "/mnt/vmdk"
 	var matches []string
 	var wg sync.WaitGroup
@@ -229,4 +265,80 @@ func findVMDKsInPath(rootPath, pattern string) []string {
 		return nil
 	})
 	return matches
+}
+
+func displayProjects(response api.ProjectListResponse) {
+	var displayProjects []responseparser.Project
+	for _, project := range response.Projects {
+		displayProjects = append(displayProjects, responseparser.Project{
+			ID:       project.ID,
+			DomainID: project.DomainID,
+			Name:     project.Name,
+			Enabled:  project.Enabled,
+		})
+	}
+	fmt.Println("\nAvailable projects:")
+	responseparser.PrintProjectsSelectionTable(displayProjects)
+}
+
+func validateMAC(mac string) error {
+	if mac == "" || mac == "auto" || mac == "none" {
+		return nil // empty MAC is valid for auto-assignment
+	}
+
+	macRegex := regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`)
+	if !macRegex.MatchString(mac) {
+		return fmt.Errorf("invalid MAC address format. Must be XX:XX:XX:XX:XX:XX")
+	}
+	return nil
+}
+
+func validateIP(ip string) error {
+	if ip == "" || ip == "none" || ip == "auto" {
+		return nil
+	}
+
+	if strings.Contains(ip, "/") {
+		return fmt.Errorf("IP address should not contain CIDR notation")
+	}
+
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return fmt.Errorf("invalid IP address format")
+	}
+
+	return nil
+}
+
+func validateIPs(ips []string) error {
+	for _, ip := range ips {
+		if err := validateIP(ip); err != nil {
+			return fmt.Errorf("IP '%s' is invalid: %v", ip, err)
+		}
+	}
+	return nil
+}
+
+// fetchFileOrURL fetches a file from a local path or a URL, allowing insecure TLS
+func fetchFileOrURL(path string) ([]byte, error) {
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client := &http.Client{Transport: tr}
+
+		resp, err := client.Get(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch URL: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("HTTP request failed with status: %s", resp.Status)
+		}
+
+		return io.ReadAll(resp.Body)
+	}
+
+	return os.ReadFile(path)
 }
