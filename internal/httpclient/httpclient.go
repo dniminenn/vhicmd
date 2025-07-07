@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const requestTimeout = 5 * time.Second
+const requestTimeout = 10 * time.Second
 
 const userAgent = "vhicmd v0.1"
 
