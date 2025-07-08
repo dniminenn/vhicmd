@@ -217,7 +217,18 @@ var migrateVMCmd = &cobra.Command{
 
 		fmt.Printf("\nImage created: %s\n", imageID)
 
-		if migrateFlagI440fx {
+		// Ensure mutually exclusive flags
+		if migrateFlagUEFI && migrateFlagI440fx {
+			return fmt.Errorf("--uefi and --i440fx flags are mutually exclusive")
+		}
+
+		//Apply image properties for UEFI / q35 if requested
+		if migrateFlagUEFI {
+			fmt.Printf("Setting UEFI firmware and q35 machine type for image %s...\n", imageID)
+			if err := api.SetImageQ35(imageURL, tok.Value, imageID); err != nil {
+				return fmt.Errorf("failed to set q35/UEFI properties: %v", err)
+			}
+		} else if migrateFlagI440fx {
 			fmt.Printf("Setting i440fx machine type for image %s...\n", imageID)
 			if err := api.SetImageI440fx(imageURL, tok.Value, imageID); err != nil {
 				return fmt.Errorf("failed to set i440fx machine type: %v", err)
@@ -470,6 +481,7 @@ var (
 	migrateFindVMDKSingle    bool
 	migrateFlagI440fx        bool
 	migrateFlagSecondaryVMDK string
+	migrateFlagUEFI          bool
 )
 
 func init() {
@@ -481,8 +493,9 @@ func init() {
 	migrateVMCmd.Flags().Int64Var(&migrateFlagVMSize, "size", 0, "Optional: size in GB if extending the image")
 	migrateVMCmd.Flags().StringVar(&migrateFlagDiskBus, "disk-bus", "scsi", "Disk bus for the root volume, default: scsi")
 	migrateVMCmd.Flags().BoolVar(&migrateFlagShutdown, "shutdown", false, "Shut down the new VM after creation")
-	migrateVMCmd.Flags().BoolVar(&migrateFlagI440fx, "i440fx", false, "Set i440fx machine type for the image (centos 6)")
+	migrateVMCmd.Flags().BoolVar(&migrateFlagI440fx, "i440fx", false, "Set i440fx machine type for the image (legacy BIOS)")
 	migrateVMCmd.Flags().StringVar(&migrateFlagSecondaryVMDK, "secondary-vmdk", "", "Local path to secondary VMDK file to attach as additional volume")
+	migrateVMCmd.Flags().BoolVar(&migrateFlagUEFI, "uefi", false, "Set UEFI firmware and q35 machine type for the image (mutually exclusive with --i440fx)")
 	migrateFindCmd.Flags().BoolVar(&migrateFindVMDKSingle, "single", false, "Find a single VMDK file")
 
 	migrateCmd.AddCommand(migrateVMCmd)
