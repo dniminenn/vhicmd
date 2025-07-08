@@ -505,11 +505,17 @@ func SetImageI440fx(imageURL, token, imageID string) error {
 func SetImageQ35(imageURL, token, imageID string) error {
 	url := fmt.Sprintf("%s/v2/images/%s", imageURL, imageID)
 
+	// Add both machine type and firmware type in one patch so a single call fully configures UEFI/q35 images.
 	patch := []map[string]interface{}{
 		{
 			"op":    "add",
 			"path":  "/hw_machine_type",
 			"value": "q35",
+		},
+		{
+			"op":    "add",
+			"path":  "/hw_firmware_type",
+			"value": "uefi",
 		},
 	}
 
