@@ -260,7 +260,10 @@ var migrateVMCmd = &cobra.Command{
 			}
 
 			fmt.Printf("Creating volume from secondary image...\n")
-			volumeResp, err := api.CreateVolumeFromImage(storageURL, tok.Value, secondaryImageID, fmt.Sprintf("secondary-%s", migrateFlagVMName), info.Size()/(1024*1024*1024))
+			// Round up the secondary volume size to the next whole GB so the volume is never
+			// smaller than the uploaded image.
+			secondaryVolumeSizeGB := (info.Size() + 1024*1024*1024 - 1) / (1024 * 1024 * 1024)
+			volumeResp, err := api.CreateVolumeFromImage(storageURL, tok.Value, secondaryImageID, fmt.Sprintf("secondary-%s", migrateFlagVMName), secondaryVolumeSizeGB)
 			if err != nil {
 				return fmt.Errorf("failed to create volume from secondary image: %v", err)
 			}
