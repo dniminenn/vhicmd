@@ -519,13 +519,20 @@ func SetImageQ35(imageURL, token, imageID string) error {
 		},
 	}
 
-	apiResp, err := callPATCH(url, token, patch)
+	jsonData, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("error marshaling patch: %v", err)
+	}
+
+	resp, err := httpclient.SendImagePatch(url, token, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to set q35 machine type: %v", err)
 	}
+	defer resp.Body.Close()
 
-	if apiResp.ResponseCode != 200 {
-		return fmt.Errorf("set q35 failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("set q35 failed [%d]: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil
