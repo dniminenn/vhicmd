@@ -49,33 +49,72 @@ func GetImageDetails(imageURL, token, imageID string) (ImageDetails, error) {
 
 // ListImages fetches the list of images with optional filters and sorting.
 func ListImages(imageURL, token string, queryParams map[string]string) (ImageListResponse, error) {
+	var allImages []Image
 	var result ImageListResponse
 
-	baseURL, err := url.Parse(fmt.Sprintf("%s/v2/images", imageURL))
-	if err != nil {
-		return result, fmt.Errorf("failed to parse URL: %v", err)
+	// Set default limit if not provided
+	currentParams := make(map[string]string)
+	for k, v := range queryParams {
+		currentParams[k] = v
+	}
+	if _, hasLimit := currentParams["limit"]; !hasLimit {
+		currentParams["limit"] = "100"
 	}
 
-	query := baseURL.Query()
-	for key, value := range queryParams {
-		query.Add(key, value)
-	}
-	baseURL.RawQuery = query.Encode()
+	for {
+		baseURL, err := url.Parse(fmt.Sprintf("%s/v2/images", imageURL))
+		if err != nil {
+			return result, fmt.Errorf("failed to parse URL: %v", err)
+		}
 
-	apiResp, err := callGET(baseURL.String(), token)
-	if err != nil {
-		return result, fmt.Errorf("failed to fetch images: %v", err)
+		query := baseURL.Query()
+		for key, value := range currentParams {
+			query.Add(key, value)
+		}
+		baseURL.RawQuery = query.Encode()
+
+		apiResp, err := callGET(baseURL.String(), token)
+		if err != nil {
+			return result, fmt.Errorf("failed to fetch images: %v", err)
+		}
+
+		if apiResp.ResponseCode != 200 {
+			return result, fmt.Errorf("image list request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+		}
+
+		var pageResult ImageListResponse
+		err = json.Unmarshal([]byte(apiResp.Response), &pageResult)
+		if err != nil {
+			return result, fmt.Errorf("failed to parse image list response: %v", err)
+		}
+
+		// Add images from this page
+		allImages = append(allImages, pageResult.Images...)
+
+		// Check if there's a next page
+		if pageResult.Next == "" {
+			break
+		}
+
+		// Parse the next URL to get the marker parameter
+		nextURL, err := url.Parse(pageResult.Next)
+		if err != nil {
+			return result, fmt.Errorf("failed to parse next URL: %v", err)
+		}
+
+		// Extract marker from next URL
+		marker := nextURL.Query().Get("marker")
+		if marker == "" {
+			break
+		}
+
+		// Update parameters for next page
+		currentParams["marker"] = marker
 	}
 
-	if apiResp.ResponseCode != 200 {
-		return result, fmt.Errorf("image list request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
-	}
-
-	err = json.Unmarshal([]byte(apiResp.Response), &result)
-	if err != nil {
-		return result, fmt.Errorf("failed to parse image list response: %v", err)
-	}
-
+	// Build final response with all images
+	result.Images = allImages
+	result.Schema = "v2/schemas/images"
 	return result, nil
 }
 
