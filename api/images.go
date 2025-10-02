@@ -49,33 +49,72 @@ func GetImageDetails(imageURL, token, imageID string) (ImageDetails, error) {
 
 // ListImages fetches the list of images with optional filters and sorting.
 func ListImages(imageURL, token string, queryParams map[string]string) (ImageListResponse, error) {
+	var allImages []Image
 	var result ImageListResponse
 
-	baseURL, err := url.Parse(fmt.Sprintf("%s/v2/images", imageURL))
-	if err != nil {
-		return result, fmt.Errorf("failed to parse URL: %v", err)
+	// Set default limit if not provided
+	currentParams := make(map[string]string)
+	for k, v := range queryParams {
+		currentParams[k] = v
+	}
+	if _, hasLimit := currentParams["limit"]; !hasLimit {
+		currentParams["limit"] = "100"
 	}
 
-	query := baseURL.Query()
-	for key, value := range queryParams {
-		query.Add(key, value)
-	}
-	baseURL.RawQuery = query.Encode()
+	for {
+		baseURL, err := url.Parse(fmt.Sprintf("%s/v2/images", imageURL))
+		if err != nil {
+			return result, fmt.Errorf("failed to parse URL: %v", err)
+		}
 
-	apiResp, err := callGET(baseURL.String(), token)
-	if err != nil {
-		return result, fmt.Errorf("failed to fetch images: %v", err)
+		query := baseURL.Query()
+		for key, value := range currentParams {
+			query.Add(key, value)
+		}
+		baseURL.RawQuery = query.Encode()
+
+		apiResp, err := callGET(baseURL.String(), token)
+		if err != nil {
+			return result, fmt.Errorf("failed to fetch images: %v", err)
+		}
+
+		if apiResp.ResponseCode != 200 {
+			return result, fmt.Errorf("image list request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+		}
+
+		var pageResult ImageListResponse
+		err = json.Unmarshal([]byte(apiResp.Response), &pageResult)
+		if err != nil {
+			return result, fmt.Errorf("failed to parse image list response: %v", err)
+		}
+
+		// Add images from this page
+		allImages = append(allImages, pageResult.Images...)
+
+		// Check if there's a next page
+		if pageResult.Next == "" {
+			break
+		}
+
+		// Parse the next URL to get the marker parameter
+		nextURL, err := url.Parse(pageResult.Next)
+		if err != nil {
+			return result, fmt.Errorf("failed to parse next URL: %v", err)
+		}
+
+		// Extract marker from next URL
+		marker := nextURL.Query().Get("marker")
+		if marker == "" {
+			break
+		}
+
+		// Update parameters for next page
+		currentParams["marker"] = marker
 	}
 
-	if apiResp.ResponseCode != 200 {
-		return result, fmt.Errorf("image list request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
-	}
-
-	err = json.Unmarshal([]byte(apiResp.Response), &result)
-	if err != nil {
-		return result, fmt.Errorf("failed to parse image list response: %v", err)
-	}
-
+	// Build final response with all images
+	result.Images = allImages
+	result.Schema = "v2/schemas/images"
 	return result, nil
 }
 
@@ -505,21 +544,34 @@ func SetImageI440fx(imageURL, token, imageID string) error {
 func SetImageQ35(imageURL, token, imageID string) error {
 	url := fmt.Sprintf("%s/v2/images/%s", imageURL, imageID)
 
+	// Add both machine type and firmware type in one patch so a single call fully configures UEFI/q35 images.
 	patch := []map[string]interface{}{
 		{
 			"op":    "add",
 			"path":  "/hw_machine_type",
 			"value": "q35",
 		},
+		{
+			"op":    "add",
+			"path":  "/hw_firmware_type",
+			"value": "uefi",
+		},
 	}
 
-	apiResp, err := callPATCH(url, token, patch)
+	jsonData, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("error marshaling patch: %v", err)
+	}
+
+	resp, err := httpclient.SendImagePatch(url, token, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to set q35 machine type: %v", err)
 	}
+	defer resp.Body.Close()
 
-	if apiResp.ResponseCode != 200 {
-		return fmt.Errorf("set q35 failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("set q35 failed [%d]: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil
