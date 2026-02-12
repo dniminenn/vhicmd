@@ -356,11 +356,9 @@ var listPortsCmd = &cobra.Command{
 			queryParams["mac_address"] = macAddress
 		}
 		status, _ := cmd.Flags().GetString("status")
-		if status == "" {
-			fmt.Printf("No status provided, defaulting to DOWN, use --status to filter.\n")
-			status = "DOWN"
+		if status != "" {
+			queryParams["status"] = status
 		}
-		queryParams["status"] = status
 
 		resp, err := api.ListPorts(networkURL, tok.Value, queryParams)
 		if err != nil {
@@ -388,15 +386,23 @@ var listPortsCmd = &cobra.Command{
 				ips = append(ips, ip.IPAddress)
 			}
 
-			portList = append(portList, responseparser.Port{
-				ID:          p.ID,
-				MACAddress:  p.MACAddress,
-				NetworkID:   p.NetworkID,
-				DeviceID:    vmName,
-				DeviceOwner: p.DeviceOwner,
-				Status:      p.Status,
-				FixedIPs:    strings.Join(ips, ", "),
-			})
+			nameFilter, _ := cmd.Flags().GetString("name")
+
+			if nameFilter == "" || strings.Contains(
+				strings.ToLower(p.Name),
+				strings.ToLower(nameFilter),
+			) {
+				portList = append(portList, responseparser.Port{
+					ID:          p.ID,
+					Name:        p.Name,
+					MACAddress:  p.MACAddress,
+					NetworkID:   p.NetworkID,
+					DeviceID:    vmName,
+					DeviceOwner: p.DeviceOwner,
+					Status:      p.Status,
+					FixedIPs:    strings.Join(ips, ", "),
+				})
+			}
 		}
 		sort.Slice(portList, func(i, j int) bool {
 			if portList[i].Status == "DOWN" && portList[j].Status != "DOWN" {
@@ -409,6 +415,7 @@ var listPortsCmd = &cobra.Command{
 		})
 
 		responseparser.PrintPortsTable(portList)
+		fmt.Printf("\n%d port(s)\n", len(portList))
 		return nil
 	},
 }
@@ -432,7 +439,7 @@ var listVmCmd = &cobra.Command{
 			queryParams["marker"] = marker
 		}
 
-		resp, err := api.ListVMs(computeURL, tok.Value, queryParams)
+		resp, err := api.ListVMsDetail(computeURL, tok.Value, queryParams)
 		if err != nil {
 			return err
 		}
@@ -444,9 +451,22 @@ var listVmCmd = &cobra.Command{
 				strings.ToLower(v.Name),
 				strings.ToLower(nameFilter),
 			) {
+				// Extract IPs from addresses map (populated by /servers/detail)
+				var ips []string
+				for _, addrs := range v.Addresses {
+					for _, addr := range addrs {
+						ips = append(ips, addr.Addr)
+					}
+				}
+
+				// Get power state string
+				powerState := getPowerStateString(v.PowerState)
+
 				vmList = append(vmList, responseparser.VM{
-					ID:   v.ID,
-					Name: v.Name,
+					ID:         v.ID,
+					Name:       v.Name,
+					PowerState: powerState,
+					IPs:        strings.Join(ips, ", "),
 				})
 			}
 		}

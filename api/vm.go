@@ -206,6 +206,39 @@ func ListVMs(computeURL, token string, queryParams map[string]string) (VMListRes
 	return result, nil
 }
 
+// VMDetailListResponse represents the response from /servers/detail
+type VMDetailListResponse struct {
+	Servers []VMDetail `json:"servers"`
+}
+
+// ListVMsDetail fetches detailed information for all VMs in one call.
+func ListVMsDetail(computeURL, token string, queryParams map[string]string) (VMDetailListResponse, error) {
+	var result VMDetailListResponse
+
+	baseURL := fmt.Sprintf("%s/servers/detail", computeURL)
+	if len(queryParams) > 0 {
+		baseURL += "?"
+		for key, value := range queryParams {
+			baseURL += fmt.Sprintf("%s=%s&", key, value)
+		}
+		baseURL = strings.TrimSuffix(baseURL, "&")
+	}
+
+	apiResp, err := callGET(baseURL, token)
+	if err != nil {
+		return result, fmt.Errorf("failed to fetch VM details: %v", err)
+	}
+	if apiResp.ResponseCode != 200 {
+		return result, fmt.Errorf("VM detail list request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	}
+
+	err = json.Unmarshal([]byte(apiResp.Response), &result)
+	if err != nil {
+		return result, fmt.Errorf("failed to parse VM detail list response: %v", err)
+	}
+	return result, nil
+}
+
 // CreateVM sends a request to create a new VM using callPOST.
 func CreateVM(computeURL, token string, request CreateVMRequest) (CreateVMResponse, error) {
 	var result CreateVMResponse

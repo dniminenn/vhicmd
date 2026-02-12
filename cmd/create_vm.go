@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/jessegalley/vhicmd/api"
@@ -53,83 +54,128 @@ var createVMCmd = &cobra.Command{
 		}
 
 		//----------------------------------------------------------------
-		// 3. Networks must be specified
+		// 3. Build the networks array (--ports path or --networks path)
 		//----------------------------------------------------------------
-		networks := flagNetworkCSV
-		if networks == "" {
-			networks = viper.GetString("networks")
-		}
-		if networks == "" {
-			return fmt.Errorf("no networks specified; use --networks or set 'networks' in config")
-		}
+		var netBytes []byte
 
-		//----------------------------------------------------------------
-		// 4. Gather IPs and/or MACs
-		//----------------------------------------------------------------
-		ips := flagIPCSV
-		macs := flagMacAddrCSV
-
-		if ips == "" && macs == "" {
-			return fmt.Errorf("must specify either --ips or --macs (use 'none' or 'auto')")
-		}
-
-		//----------------------------------------------------------------
-		// 5. Split the CSV values
-		//----------------------------------------------------------------
-		networkIDs := strings.Split(networks, ",")
-		var ipAddresses []string
-		if ips != "" {
-			ipAddresses = strings.Split(ips, ",")
-		} else {
-			// If no --ips, fill with "none" for each network
-			ipAddresses = make([]string, len(networkIDs))
-			for i := range ipAddresses {
-				ipAddresses[i] = "none"
+		if flagPortCSV != "" {
+			// --ports path: use pre-created port IDs directly
+			if flagNetworkCSV != "" || flagIPCSV != "" || flagMacAddrCSV != "" {
+				return fmt.Errorf("--ports cannot be combined with --networks, --ips, or --macaddr")
 			}
-		}
 
-		var macAddresses []string
-		if macs != "" {
-			macAddresses = strings.Split(macs, ",")
-		} else {
-			// If no --macs, fill with "none" for each network
-			macAddresses = make([]string, len(networkIDs))
-			for i := range macAddresses {
-				macAddresses[i] = "none"
+			portIDs := strings.Split(flagPortCSV, ",")
+			var netSlice []map[string]interface{}
+			for _, pid := range portIDs {
+				netSlice = append(netSlice, map[string]interface{}{
+					"port": strings.TrimSpace(pid),
+				})
 			}
-		}
 
-		//----------------------------------------------------------------
-		// 6. Basic length checks
-		//----------------------------------------------------------------
-		if len(networkIDs) != len(ipAddresses) || len(networkIDs) != len(macAddresses) {
-			return fmt.Errorf(
-				"number of networks (%d) must match number of IPs (%d) and MACs (%d)",
-				len(networkIDs), len(ipAddresses), len(macAddresses),
-			)
-		}
+			var err error
+			netBytes, err = json.Marshal(netSlice)
+			if err != nil {
+				return fmt.Errorf("failed to marshal networks: %v", err)
+			}
+		} else {
+			// --networks path: original flow
+			networks := flagNetworkCSV
+			if networks == "" {
+				networks = viper.GetString("networks")
+			}
+			if networks == "" {
+				return fmt.Errorf("no networks specified; use --networks, --ports, or set 'networks' in config")
+			}
 
-		//----------------------------------------------------------------
-		// 7. Validate IPs and MACs with your helpers; resolve network name -> ID
-		//----------------------------------------------------------------
-		if err := validateIPs(ipAddresses); err != nil {
-			return err
-		}
-		for _, m := range macAddresses {
-			if err := validateMAC(m); err != nil {
+			ips := flagIPCSV
+			macs := flagMacAddrCSV
+
+			if ips == "" && macs == "" {
+				return fmt.Errorf("must specify either --ips or --macs (use 'none' or 'auto')")
+			}
+
+			networkIDs := strings.Split(networks, ",")
+			var ipAddresses []string
+			if ips != "" {
+				ipAddresses = strings.Split(ips, ",")
+			} else {
+				ipAddresses = make([]string, len(networkIDs))
+				for i := range ipAddresses {
+					ipAddresses[i] = "none"
+				}
+			}
+
+			var macAddresses []string
+			if macs != "" {
+				macAddresses = strings.Split(macs, ",")
+			} else {
+				macAddresses = make([]string, len(networkIDs))
+				for i := range macAddresses {
+					macAddresses[i] = "none"
+				}
+			}
+
+			if len(networkIDs) != len(ipAddresses) || len(networkIDs) != len(macAddresses) {
+				return fmt.Errorf(
+					"number of networks (%d) must match number of IPs (%d) and MACs (%d)",
+					len(networkIDs), len(ipAddresses), len(macAddresses),
+				)
+			}
+
+			if err := validateIPs(ipAddresses); err != nil {
 				return err
 			}
-		}
+			for _, m := range macAddresses {
+				if err := validateMAC(m); err != nil {
+					return err
+				}
+			}
 
-		for i, netName := range networkIDs {
-			nid, err := api.GetNetworkIDByName(networkURL, tok.Value, netName)
-			if err == nil {
-				networkIDs[i] = nid
+			for i, netName := range networkIDs {
+				nid, err := api.GetNetworkIDByName(networkURL, tok.Value, netName)
+				if err == nil {
+					networkIDs[i] = nid
+				}
+			}
+
+			var netSlice []map[string]interface{}
+			for i, netID := range networkIDs {
+				ipVal := strings.TrimSpace(ipAddresses[i])
+				macVal := strings.TrimSpace(macAddresses[i])
+
+				netObj := map[string]interface{}{
+					"uuid": netID,
+				}
+
+				if strings.ToLower(ipVal) != "none" {
+					if strings.ToLower(ipVal) == "auto" {
+						// skip => DHCP
+					} else {
+						netObj["fixed_ip"] = ipVal
+					}
+					if strings.ToLower(macVal) != "none" && strings.ToLower(macVal) != "auto" {
+						return fmt.Errorf("managed NIC cannot have custom MAC: IP=%s MAC=%s", ipVal, macVal)
+					}
+				} else {
+					if strings.ToLower(macVal) == "none" || strings.ToLower(macVal) == "auto" {
+						// skip => hypervisor picks MAC
+					} else {
+						netObj["mac_address"] = macVal
+					}
+				}
+
+				netSlice = append(netSlice, netObj)
+			}
+
+			var err error
+			netBytes, err = json.Marshal(netSlice)
+			if err != nil {
+				return fmt.Errorf("failed to marshal networks: %v", err)
 			}
 		}
 
 		//----------------------------------------------------------------
-		// 8. Resolve image & flavor by name if necessary
+		// 4. Resolve image & flavor by name if necessary
 		//----------------------------------------------------------------
 		if imgID, err := api.GetImageIDByName(imageURL, tok.Value, imageRef); err == nil && imgID != "" {
 			imageRef = imgID
@@ -139,18 +185,21 @@ var createVMCmd = &cobra.Command{
 		}
 
 		//----------------------------------------------------------------
-		// 9. Volume size & netboot checks
+		// 5. Volume size & netboot checks
 		//----------------------------------------------------------------
 		volumeSize := 10 // default
 		if flagVMSize > 0 {
 			volumeSize = flagVMSize
 		}
-		if flagCIData != "" && flagUserData == "" {
-			return fmt.Errorf("--ci-data requires --user-data")
+		if flagCIData != "" && flagCIDataFile != "" {
+			return fmt.Errorf("--ci-data and --ci-data-file are mutually exclusive")
+		}
+		if (flagCIData != "" || flagCIDataFile != "") && flagUserData == "" {
+			return fmt.Errorf("--ci-data/--ci-data-file requires --user-data")
 		}
 
 		//----------------------------------------------------------------
-		// 10. Create the base VM request
+		// 6. Create the base VM request
 		//----------------------------------------------------------------
 		var request api.CreateVMRequest
 		request.Server.Name = flagVMName
@@ -164,50 +213,7 @@ var createVMCmd = &cobra.Command{
 			}
 		}
 
-		//----------------------------------------------------------------
-		// 11. Build the networks array *in memory*, then JSON-encode it
-		//----------------------------------------------------------------
-		var netSlice []map[string]interface{}
-
-		for i, netID := range networkIDs {
-			ipVal := strings.TrimSpace(ipAddresses[i])
-			macVal := strings.TrimSpace(macAddresses[i])
-
-			netObj := map[string]interface{}{
-				"uuid": netID,
-			}
-
-			// If IP != "none", it's a managed NIC
-			if strings.ToLower(ipVal) != "none" {
-				if strings.ToLower(ipVal) == "auto" {
-					// skip => DHCP
-				} else {
-					// real IP => set fixed_ip
-					netObj["fixed_ip"] = ipVal
-				}
-				// Managed NIC => no custom MAC
-				if strings.ToLower(macVal) != "none" && strings.ToLower(macVal) != "auto" {
-					return fmt.Errorf("managed NIC cannot have custom MAC: IP=%s MAC=%s", ipVal, macVal)
-				}
-			} else {
-				// Unmanaged NIC => ipVal = "none"
-				if strings.ToLower(macVal) == "none" || strings.ToLower(macVal) == "auto" {
-					// skip => hypervisor picks MAC
-				} else {
-					netObj["mac_address"] = macVal
-				}
-			}
-
-			netSlice = append(netSlice, netObj)
-		}
-
-		// Convert that slice -> JSON string
-		netBytes, err := json.Marshal(netSlice)
-		if err != nil {
-			return fmt.Errorf("failed to marshal networks: %v", err)
-		}
-
-		// Assign that JSON string to the "Networks" field
+		// Assign the networks JSON string
 		request.Server.Networks = string(netBytes)
 
 		//----------------------------------------------------------------
@@ -233,9 +239,19 @@ var createVMCmd = &cobra.Command{
 			//------------------------------------------------------------
 			if flagUserData != "" {
 				var userData string
-				if flagCIData != "" {
+				if flagCIData != "" || flagCIDataFile != "" {
 					// Templating path
-					ciData, err := template.ParseKeyValueString(flagCIData)
+					var ciDataStr string
+					if flagCIDataFile != "" {
+						fileBytes, err := os.ReadFile(flagCIDataFile)
+						if err != nil {
+							return fmt.Errorf("error reading ci-data-file: %v", err)
+						}
+						ciDataStr = string(fileBytes)
+					} else {
+						ciDataStr = flagCIData
+					}
+					ciData, err := template.ParseKeyValueString(ciDataStr)
 					if err != nil {
 						return fmt.Errorf("error parsing ci-data: %v", err)
 					}
@@ -433,4 +449,6 @@ var (
 	flagUserData   string
 	flagMacAddrCSV string
 	flagCIData     string
+	flagCIDataFile string
+	flagPortCSV    string
 )

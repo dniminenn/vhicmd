@@ -362,7 +362,7 @@ var migrateVMCmd = &cobra.Command{
 				netNameOrID, vmDetails.ID, macAddr)
 
 			// Create a port, using the MAC address for unmanaged networks
-			portResp, err := api.CreatePort(networkURL, tok.Value, netNameOrID, macAddr)
+			portResp, err := api.CreatePort(networkURL, tok.Value, netNameOrID, macAddr, "", nil)
 			if err != nil {
 				return fmt.Errorf("failed to create port on network %s: %v", netNameOrID, err)
 			}
