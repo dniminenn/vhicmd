@@ -332,8 +332,14 @@ var createPortCmd = &cobra.Command{
 			fmt.Printf("Network ID not found by name, using as-is: %s\n", err)
 		}
 
+		// Build fixed IPs if --ip was provided
+		var fixedIPs []api.IPInfo
+		if flagPortIP != "" {
+			fixedIPs = append(fixedIPs, api.IPInfo{IPAddress: flagPortIP})
+		}
+
 		// Create port
-		resp, err := api.CreatePort(networkURL, tok.Value, networkID, flagPortMAC)
+		resp, err := api.CreatePort(networkURL, tok.Value, networkID, flagPortMAC, flagPortName, fixedIPs)
 		if err != nil {
 			return fmt.Errorf("failed to create port: %v", err)
 		}
@@ -344,9 +350,15 @@ var createPortCmd = &cobra.Command{
 		} else {
 			fmt.Printf("Port created successfully:\n")
 			fmt.Printf("  ID: %s\n", resp.Port.ID)
+			if resp.Port.Name != "" {
+				fmt.Printf("  Name: %s\n", resp.Port.Name)
+			}
 			fmt.Printf("  MAC: %s\n", resp.Port.MACAddress)
 			fmt.Printf("  Network: %s\n", resp.Port.NetworkID)
 			fmt.Printf("  Status: %s\n", resp.Port.Status)
+			for _, ip := range resp.Port.FixedIPs {
+				fmt.Printf("  IP: %s\n", ip.IPAddress)
+			}
 		}
 
 		return nil
@@ -364,6 +376,8 @@ var (
 	flagDiskFormat        string
 	flagPortNetwork       string
 	flagPortMAC           string
+	flagPortName          string
+	flagPortIP            string
 	flagInstanceID        string
 	flagDeleteSnapshot    bool
 )
@@ -381,6 +395,8 @@ func init() {
 	createVMCmd.Flags().StringVar(&flagUserData, "user-data", "", "User script, bash, YAML (file path), use with --ci-data for templating, eg. {{%variable%}}")
 	createVMCmd.Flags().StringVar(&flagMacAddrCSV, "macaddr", "", "Comma-separated list of MAC addresses ('auto' is valid value)")
 	createVMCmd.Flags().StringVar(&flagCIData, "ci-data", "", "Template variables for cloud-init in format key:value,key:value")
+	createVMCmd.Flags().StringVar(&flagCIDataFile, "ci-data-file", "", "File containing template variables (one key:value per line, supports quoted multi-line values)")
+	createVMCmd.Flags().StringVar(&flagPortCSV, "ports", "", "Comma-separated list of pre-created port IDs (mutually exclusive with --networks/--ips/--macaddr)")
 
 	// Bind flags to viper
 	viper.BindPFlag("flavor_id", createVMCmd.Flags().Lookup("flavor"))
@@ -412,6 +428,8 @@ func init() {
 	// Flags for create port
 	createPortCmd.Flags().StringVar(&flagPortNetwork, "network", "", "Network ID or name")
 	createPortCmd.Flags().StringVar(&flagPortMAC, "mac", "", "MAC address")
+	createPortCmd.Flags().StringVar(&flagPortName, "name", "", "Port name (for easy identification and cleanup)")
+	createPortCmd.Flags().StringVar(&flagPortIP, "ip", "", "Fixed IP address to assign")
 
 	// Add subcommands to the parent create command
 	createCmd.AddCommand(createVMCmd)

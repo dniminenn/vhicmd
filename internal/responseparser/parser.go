@@ -490,8 +490,10 @@ func PrintNetworksTable(nets []Network) {
 // -------------------------------------------------------------------
 
 type VM struct {
-	ID   string
-	Name string
+	ID         string
+	Name       string
+	PowerState string
+	IPs        string
 }
 
 type VMDetails struct {
@@ -559,7 +561,7 @@ type SecurityGroupRule struct {
 
 func PrintVMsTable(vms []VM) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"NAME", "ID"})
+	table.SetHeader([]string{"NAME", "ID", "STATE", "IPs"})
 
 	applyTableStyle(table)
 
@@ -567,6 +569,8 @@ func PrintVMsTable(vms []VM) {
 		table.Append([]string{
 			color.Style{color.FgGreen}.Render(vm.Name),
 			vm.ID,
+			colorStyleStatus(vm.PowerState),
+			stringOrNA(vm.IPs),
 		})
 	}
 	table.Render()
@@ -756,6 +760,7 @@ func PrintVMDetailsTable(details []VMDetails) {
 
 type Port struct {
 	ID          string
+	Name        string
 	MACAddress  string
 	NetworkID   string
 	DeviceID    string
@@ -845,12 +850,13 @@ func PrintPortDetailsTable(details PortDetails) {
 
 func PrintPortsTable(ports []Port) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"ID", "MAC", "NETWORK", "DEVICE", "STATUS", "IPS"})
+	table.SetHeader([]string{"NAME", "ID", "MAC", "NETWORK", "DEVICE", "STATUS", "IPS"})
 
 	applyTableStyle(table)
 
 	for _, p := range ports {
 		table.Append([]string{
+			color.Style{color.FgGreen}.Render(stringOrNA(p.Name)),
 			p.ID,
 			color.Style{color.FgGreen}.Render(p.MACAddress),
 			p.NetworkID,

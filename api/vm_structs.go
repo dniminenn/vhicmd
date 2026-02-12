@@ -86,6 +86,11 @@ type VMDetail struct {
 	HCIInfo                          HCIInfo           `json:"hci_info"`
 	OSExtendedVolumesVolumesAttached []VmVolume        `json:"os-extended-volumes:volumes_attached"`
 	Metadata                         map[string]string `json:"metadata,omitempty"`
+	Addresses                        map[string][]struct {
+		Addr    string `json:"addr"`
+		Version int    `json:"version"`
+		Type    string `json:"OS-EXT-IPS:type"`
+	} `json:"addresses,omitempty"`
 }
 
 // SecurityGroup represents a security group.

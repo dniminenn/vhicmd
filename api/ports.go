@@ -19,6 +19,7 @@ type Port struct {
 	FixedIPs        []IPInfo `json:"fixed_ips,omitempty"`
 	ID              string   `json:"id,omitempty"`
 	MACAddress      string   `json:"mac_address,omitempty"`
+	Name            string   `json:"name,omitempty"`
 	NetworkID       string   `json:"network_id"`
 	SecurityGroups  []string `json:"security_groups,omitempty"`
 	Status          string   `json:"status,omitempty"`
@@ -41,7 +42,7 @@ type PortListResponse struct {
 }
 
 // CreatePort creates a new port with specified parameters
-func CreatePort(baseURL, token string, networkID, macAddress string) (PortCreateResponse, error) {
+func CreatePort(baseURL, token string, networkID, macAddress, name string, fixedIPs []IPInfo) (PortCreateResponse, error) {
 	var result PortCreateResponse
 
 	url := fmt.Sprintf("%s/v2.0/ports", baseURL)
@@ -50,6 +51,8 @@ func CreatePort(baseURL, token string, networkID, macAddress string) (PortCreate
 		Port: Port{
 			NetworkID:  networkID,
 			MACAddress: macAddress,
+			Name:       name,
+			FixedIPs:   fixedIPs,
 		},
 	}
 
@@ -139,4 +142,28 @@ func DeletePort(baseURL, token, portID string) error {
 	}
 
 	return nil
+}
+
+// GetPortIDByName finds a port by name and returns its ID.
+// Returns an error if zero or multiple ports match.
+func GetPortIDByName(baseURL, token, portName string) (string, error) {
+	if isUuid(portName) {
+		return portName, nil
+	}
+
+	queryParams := map[string]string{"name": portName}
+	resp, err := ListPorts(baseURL, token, queryParams)
+	if err != nil {
+		return "", err
+	}
+
+	if len(resp.Ports) == 0 {
+		return "", fmt.Errorf("no port found with name %s", portName)
+	}
+
+	if len(resp.Ports) > 1 {
+		return "", fmt.Errorf("multiple ports found with name %s", portName)
+	}
+
+	return resp.Ports[0].ID, nil
 }

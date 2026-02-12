@@ -140,10 +140,10 @@ List resources:
 ```bash
 vhicmd list domains              # Admin only
 vhicmd list projects
-vhicmd list vms [--name filter]
+vhicmd list vms [--name filter]                                        # Shows IPs and power state
 vhicmd list volumes
 vhicmd list networks [--name filter]
-vhicmd list ports
+vhicmd list ports [--status DOWN] [--name filter] [--mac-address addr]  # Shows all ports by default
 vhicmd list flavors
 vhicmd list images [--name filter] [--visibility public|private|shared]
 vhicmd list image-members <image>
@@ -192,7 +192,7 @@ vhicmd create vm --name <name> \
   --macaddr <mac-addresses>
 ```
 
-With templates:
+With templates (inline variables):
 ```bash
 vhicmd create vm --name <name> \
   --flavor <flavor-id> \
@@ -201,6 +201,25 @@ vhicmd create vm --name <name> \
   --ips <ip-addresses> \
   --user-data <template-file> \
   --ci-data 'key:value,key:value'
+```
+
+With templates (variables from file, useful for multi-line values like PEM certs):
+```bash
+vhicmd create vm --name <name> \
+  --flavor <flavor-id> \
+  --image <image-id> \
+  --networks <network-ids> \
+  --ips <ip-addresses> \
+  --user-data <template-file> \
+  --ci-data-file vars.txt
+```
+
+With pre-created ports:
+```bash
+vhicmd create vm --name <name> \
+  --flavor <flavor-id> \
+  --image <image-id> \
+  --ports <port-id1>,<port-id2>
 ```
 
 Delete VM:
@@ -241,7 +260,7 @@ vhicmd update vm detach-port <vm-id> <port-id>
 
 ### Template Support
 
-The templating engine supports variable substitution in cloud-init scripts and bash scripts using the `{{%variable%}}` syntax. Variables are provided via the `--ci-data` flag in `key:value` format.
+The templating engine supports variable substitution in cloud-init scripts and bash scripts using the `{{%variable%}}` syntax. Variables are provided via `--ci-data` (inline) or `--ci-data-file` (from file) in `key:value` format.
 
 Validate template:
 ```bash
@@ -253,6 +272,7 @@ Template Features:
 - Strict validation of all variables
 - Support for quoted values with commas
 - Newline or comma-delimited key-value pairs
+- `--ci-data-file` for file-based variables (supports multi-line quoted values, ideal for PEM certificates)
 - Preview mode to see processed output
 - Automatic validation before VM creation
 
@@ -349,12 +369,12 @@ vhicmd update image visibility <image> <visibility>       # Update visibility
 
 Create port:
 ```bash
-vhicmd create port --network <network-id> [--mac <mac-address>]
+vhicmd create port --network <network-id> [--mac <mac-address>] [--name <port-name>] [--ip <ip-address>]
 ```
 
 Delete port:
 ```bash
-vhicmd delete port <port-id>
+vhicmd delete port <port-id-name-or-mac>   # Accepts UUID, name, or MAC address
 ```
 
 ### VM Migration
