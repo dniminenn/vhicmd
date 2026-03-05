@@ -6,24 +6,33 @@ import (
 	"strings"
 )
 
+// AllowedAddressPair represents an allowed address pair on a port.
+// When port security is enabled, this authorizes the port to send/receive
+// traffic from additional IP addresses beyond its fixed IPs (e.g. Keepalived VIPs).
+type AllowedAddressPair struct {
+	IPAddress  string `json:"ip_address"`
+	MACAddress string `json:"mac_address,omitempty"`
+}
+
 // Port represents a Neutron port
 type Port struct {
-	AdminStateUp    bool     `json:"admin_state_up,omitempty"`
-	BindingHostID   string   `json:"binding:host_id,omitempty"`
-	BindingVnicType string   `json:"binding:vnic_type,omitempty"`
-	CreatedAt       string   `json:"created_at,omitempty"`
-	DeviceID        string   `json:"device_id,omitempty"`
-	DeviceOwner     string   `json:"device_owner,omitempty"`
-	DNSDomain       string   `json:"dns_domain,omitempty"`
-	DNSName         string   `json:"dns_name,omitempty"`
-	FixedIPs        []IPInfo `json:"fixed_ips,omitempty"`
-	ID              string   `json:"id,omitempty"`
-	MACAddress      string   `json:"mac_address,omitempty"`
-	Name            string   `json:"name,omitempty"`
-	NetworkID       string   `json:"network_id"`
-	SecurityGroups  []string `json:"security_groups,omitempty"`
-	Status          string   `json:"status,omitempty"`
-	UpdatedAt       string   `json:"updated_at,omitempty"`
+	AdminStateUp        bool                 `json:"admin_state_up,omitempty"`
+	AllowedAddressPairs []AllowedAddressPair `json:"allowed_address_pairs,omitempty"`
+	BindingHostID       string               `json:"binding:host_id,omitempty"`
+	BindingVnicType     string               `json:"binding:vnic_type,omitempty"`
+	CreatedAt           string               `json:"created_at,omitempty"`
+	DeviceID            string               `json:"device_id,omitempty"`
+	DeviceOwner         string               `json:"device_owner,omitempty"`
+	DNSDomain           string               `json:"dns_domain,omitempty"`
+	DNSName             string               `json:"dns_name,omitempty"`
+	FixedIPs            []IPInfo             `json:"fixed_ips,omitempty"`
+	ID                  string               `json:"id,omitempty"`
+	MACAddress          string               `json:"mac_address,omitempty"`
+	Name                string               `json:"name,omitempty"`
+	NetworkID           string               `json:"network_id"`
+	SecurityGroups      []string             `json:"security_groups,omitempty"`
+	Status              string               `json:"status,omitempty"`
+	UpdatedAt           string               `json:"updated_at,omitempty"`
 }
 
 // PortCreateRequest represents the request body for port creation
@@ -42,17 +51,18 @@ type PortListResponse struct {
 }
 
 // CreatePort creates a new port with specified parameters
-func CreatePort(baseURL, token string, networkID, macAddress, name string, fixedIPs []IPInfo) (PortCreateResponse, error) {
+func CreatePort(baseURL, token string, networkID, macAddress, name string, fixedIPs []IPInfo, allowedPairs []AllowedAddressPair) (PortCreateResponse, error) {
 	var result PortCreateResponse
 
 	url := fmt.Sprintf("%s/v2.0/ports", baseURL)
 
 	request := PortCreateRequest{
 		Port: Port{
-			NetworkID:  networkID,
-			MACAddress: macAddress,
-			Name:       name,
-			FixedIPs:   fixedIPs,
+			NetworkID:           networkID,
+			MACAddress:          macAddress,
+			Name:                name,
+			FixedIPs:            fixedIPs,
+			AllowedAddressPairs: allowedPairs,
 		},
 	}
 
@@ -71,6 +81,47 @@ func CreatePort(baseURL, token string, networkID, macAddress, name string, fixed
 	}
 
 	return result, nil
+}
+
+// PortUpdateRequest represents the request body for updating a port
+type PortUpdateRequest struct {
+	Port PortUpdateFields `json:"port"`
+}
+
+// PortUpdateFields contains only the fields that can be updated on a port
+type PortUpdateFields struct {
+	AllowedAddressPairs []AllowedAddressPair `json:"allowed_address_pairs"`
+}
+
+// UpdatePortAllowedAddressPairs sets the allowed address pairs on an existing port
+func UpdatePortAllowedAddressPairs(baseURL, token, portID string, pairs []AllowedAddressPair) (Port, error) {
+	var wrapper struct {
+		Port Port `json:"port"`
+	}
+
+	url := fmt.Sprintf("%s/v2.0/ports/%s", baseURL, portID)
+
+	request := PortUpdateRequest{
+		Port: PortUpdateFields{
+			AllowedAddressPairs: pairs,
+		},
+	}
+
+	apiResp, err := callPUT(url, token, request)
+	if err != nil {
+		return wrapper.Port, fmt.Errorf("failed to update port: %v", err)
+	}
+
+	if apiResp.ResponseCode != 200 {
+		return wrapper.Port, fmt.Errorf("update port request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	}
+
+	err = json.Unmarshal([]byte(apiResp.Response), &wrapper)
+	if err != nil {
+		return wrapper.Port, fmt.Errorf("failed to parse update port response: %v", err)
+	}
+
+	return wrapper.Port, nil
 }
 
 // ListPorts fetches list of ports with optional query parameters

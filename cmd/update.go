@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var flagUpdatePortAllowedPairs string
+
 var updateCmd = &cobra.Command{
 	Use:     "update",
 	Aliases: []string{"set"},
@@ -453,6 +455,49 @@ var detachPortCmd = &cobra.Command{
 	},
 }
 
+var updatePortCmd = &cobra.Command{
+	Use:   "port <port-id-or-name>",
+	Short: "Update port attributes (e.g. allowed address pairs)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		portRef := args[0]
+
+		networkURL, err := validateTokenEndpoint(tok, "network")
+		if err != nil {
+			return err
+		}
+
+		// Resolve port by name or ID
+		portID, err := api.GetPortIDByName(networkURL, tok.Value, portRef)
+		if err != nil {
+			return fmt.Errorf("failed to resolve port %q: %v", portRef, err)
+		}
+
+		if flagUpdatePortAllowedPairs == "" {
+			return fmt.Errorf("no update flags specified; use --allowed-address-pairs")
+		}
+
+		var pairs []api.AllowedAddressPair
+		for _, ip := range strings.Split(flagUpdatePortAllowedPairs, ",") {
+			ip = strings.TrimSpace(ip)
+			if ip != "" {
+				pairs = append(pairs, api.AllowedAddressPair{IPAddress: ip})
+			}
+		}
+
+		port, err := api.UpdatePortAllowedAddressPairs(networkURL, tok.Value, portID, pairs)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Updated port %s allowed address pairs:\n", portID)
+		for _, p := range port.AllowedAddressPairs {
+			fmt.Printf("  %s\n", p.IPAddress)
+		}
+		return nil
+	},
+}
+
 func init() {
 	// VM subcommands
 	updateVMCmd.AddCommand(vmNameCmd)
@@ -478,10 +523,14 @@ func init() {
 	updateImageCmd.AddCommand(imageMemberStatusCmd)
 	updateImageCmd.AddCommand(imageTypeCmd)
 
+	// Port subcommand
+	updatePortCmd.Flags().StringVar(&flagUpdatePortAllowedPairs, "allowed-address-pairs", "", "Comma-separated IPs to allow (for Keepalived VIPs, etc.)")
+
 	// Add to update command
 	updateCmd.AddCommand(updateVMCmd)
 	updateCmd.AddCommand(updateVolumeCmd)
 	updateCmd.AddCommand(updateImageCmd)
+	updateCmd.AddCommand(updatePortCmd)
 
 	rootCmd.AddCommand(updateCmd)
 }
