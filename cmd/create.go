@@ -338,8 +338,19 @@ var createPortCmd = &cobra.Command{
 			fixedIPs = append(fixedIPs, api.IPInfo{IPAddress: flagPortIP})
 		}
 
+		// Build allowed address pairs if provided
+		var allowedPairs []api.AllowedAddressPair
+		if flagPortAllowedPairs != "" {
+			for _, ip := range strings.Split(flagPortAllowedPairs, ",") {
+				ip = strings.TrimSpace(ip)
+				if ip != "" {
+					allowedPairs = append(allowedPairs, api.AllowedAddressPair{IPAddress: ip})
+				}
+			}
+		}
+
 		// Create port
-		resp, err := api.CreatePort(networkURL, tok.Value, networkID, flagPortMAC, flagPortName, fixedIPs)
+		resp, err := api.CreatePort(networkURL, tok.Value, networkID, flagPortMAC, flagPortName, fixedIPs, allowedPairs)
 		if err != nil {
 			return fmt.Errorf("failed to create port: %v", err)
 		}
@@ -378,6 +389,7 @@ var (
 	flagPortMAC           string
 	flagPortName          string
 	flagPortIP            string
+	flagPortAllowedPairs  string
 	flagInstanceID        string
 	flagDeleteSnapshot    bool
 )
@@ -432,6 +444,7 @@ func init() {
 	createPortCmd.Flags().StringVar(&flagPortMAC, "mac", "", "MAC address")
 	createPortCmd.Flags().StringVar(&flagPortName, "name", "", "Port name (for easy identification and cleanup)")
 	createPortCmd.Flags().StringVar(&flagPortIP, "ip", "", "Fixed IP address to assign")
+	createPortCmd.Flags().StringVar(&flagPortAllowedPairs, "allowed-address-pairs", "", "Comma-separated IPs to allow (for Keepalived VIPs, etc.)")
 
 	// Add subcommands to the parent create command
 	createCmd.AddCommand(createVMCmd)
