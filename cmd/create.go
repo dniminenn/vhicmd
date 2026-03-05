@@ -323,13 +323,13 @@ var createPortCmd = &cobra.Command{
 		}
 
 		// Check if network exists by name first
-		fmt.Printf("Checking network ID for %s\n", networkID)
+		fmt.Fprintf(os.Stderr, "Checking network ID for %s\n", networkID)
 		netID, err := api.GetNetworkIDByName(networkURL, tok.Value, networkID)
 		if err == nil {
-			fmt.Printf("Network found: %s\n", netID)
+			fmt.Fprintf(os.Stderr, "Network found: %s\n", netID)
 			networkID = netID
 		} else {
-			fmt.Printf("Network ID not found by name, using as-is: %s\n", err)
+			fmt.Fprintf(os.Stderr, "Network ID not found by name, using as-is: %s\n", err)
 		}
 
 		// Build fixed IPs if --ip was provided
@@ -383,13 +383,15 @@ var (
 )
 
 func init() {
+	// --json as persistent flag on create (inherited by all create subcommands)
+	createCmd.PersistentFlags().BoolVar(&flagJsonOutput, "json", false, "Output in JSON format")
+
 	// Flags for create vm
 	createVMCmd.Flags().StringVar(&flagVMName, "name", "", "Name of the virtual machine")
 	createVMCmd.Flags().StringVar(&flagFlavorRef, "flavor", "", "Flavor ID for the virtual machine")
 	createVMCmd.Flags().StringVar(&flagImageRef, "image", "", "Image ID for the virtual machine")
 	createVMCmd.Flags().StringVar(&flagNetworkCSV, "networks", "", "Comma-separated list of network UUIDs")
 	createVMCmd.Flags().StringVar(&flagIPCSV, "ips", "", "Comma-separated list of IP addresses ('none' for unmanaged network)")
-	createVMCmd.Flags().BoolVar(&flagJsonOutput, "json", false, "Output in JSON format (default: YAML)")
 	createVMCmd.Flags().IntVar(&flagVMSize, "size", 0, "Size in GB of boot volume")
 	createVMCmd.Flags().BoolVar(&flagVMNetboot, "netboot", false, "Enable network boot with blank volume (deprecated, use --image)")
 	createVMCmd.Flags().StringVar(&flagUserData, "user-data", "", "User script, bash, YAML (file path), use with --ci-data for templating, eg. {{%variable%}}")

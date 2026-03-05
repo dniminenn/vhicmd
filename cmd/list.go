@@ -472,7 +472,8 @@ var listVmCmd = &cobra.Command{
 		}
 
 		if flagJsonOutput {
-			b, _ := json.MarshalIndent(vmList, "", "  ")
+			wrapper := map[string]interface{}{"servers": vmList}
+			b, _ := json.MarshalIndent(wrapper, "", "  ")
 			fmt.Println(string(b))
 			return nil
 		}
