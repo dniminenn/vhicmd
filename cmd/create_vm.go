@@ -289,7 +289,7 @@ var createVMCmd = &cobra.Command{
 
 		} else {
 			// Netboot or no image => create blank volume
-			fmt.Printf("Creating blank boot volume for VM %s...\n", flagVMName)
+			fmt.Fprintf(os.Stderr, "Creating blank boot volume for VM %s...\n", flagVMName)
 			volRequest := api.CreateVolumeRequest{}
 			volRequest.Volume.Name = fmt.Sprintf("%s-boot", flagVMName)
 			volRequest.Volume.Size = volumeSize
@@ -300,7 +300,7 @@ var createVMCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("failed to create blank boot volume: %v", err)
 			}
-			fmt.Printf("Waiting for volume to become available...\n")
+			fmt.Fprintf(os.Stderr, "Waiting for volume to become available...\n")
 
 			if err := api.WaitForVolumeStatus(storageURL, tok.Value, volResp.Volume.ID, "available"); err != nil {
 				return fmt.Errorf("failed waiting for volume: %v", err)
@@ -324,7 +324,7 @@ var createVMCmd = &cobra.Command{
 		//----------------------------------------------------------------
 		// 14. Create the VM in one shot (with our networks JSON)
 		//----------------------------------------------------------------
-		fmt.Printf("Creating VM %s...\n", flagVMName)
+		fmt.Fprintf(os.Stderr, "Creating VM %s...\n", flagVMName)
 
 		// Create a complete JSON representation of the request
 		requestBytes, err := json.Marshal(request)
@@ -430,8 +430,8 @@ var createVMCmd = &cobra.Command{
 		//----------------------------------------------------------------
 		if flagVMNetboot {
 			consoleURL := fmt.Sprintf("%s:8800/compute/servers/instances/%s/console", tok.Host, vmDetails.ID)
-			fmt.Printf("\nGo to VHI console to complete machine boot/install.\n")
-			fmt.Printf("VHI console: %s\n", consoleURL)
+			fmt.Fprintf(os.Stderr, "\nGo to VHI console to complete machine boot/install.\n")
+			fmt.Fprintf(os.Stderr, "VHI console: %s\n", consoleURL)
 		}
 
 		return nil
