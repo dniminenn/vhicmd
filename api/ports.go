@@ -30,6 +30,7 @@ type Port struct {
 	MACAddress          string               `json:"mac_address,omitempty"`
 	Name                string               `json:"name,omitempty"`
 	NetworkID           string               `json:"network_id"`
+	PortSecurityEnabled *bool                `json:"port_security_enabled,omitempty"`
 	SecurityGroups      []string             `json:"security_groups,omitempty"`
 	Status              string               `json:"status,omitempty"`
 	UpdatedAt           string               `json:"updated_at,omitempty"`
@@ -90,11 +91,20 @@ type PortUpdateRequest struct {
 
 // PortUpdateFields contains only the fields that can be updated on a port
 type PortUpdateFields struct {
-	AllowedAddressPairs []AllowedAddressPair `json:"allowed_address_pairs"`
+	AllowedAddressPairs []AllowedAddressPair `json:"allowed_address_pairs,omitempty"`
+	PortSecurityEnabled *bool                `json:"port_security_enabled,omitempty"`
+	SecurityGroups      *[]string            `json:"security_groups,omitempty"`
 }
 
 // UpdatePortAllowedAddressPairs sets the allowed address pairs on an existing port
 func UpdatePortAllowedAddressPairs(baseURL, token, portID string, pairs []AllowedAddressPair) (Port, error) {
+	return UpdatePort(baseURL, token, portID, PortUpdateFields{
+		AllowedAddressPairs: pairs,
+	})
+}
+
+// UpdatePort updates a port with the given fields
+func UpdatePort(baseURL, token, portID string, fields PortUpdateFields) (Port, error) {
 	var wrapper struct {
 		Port Port `json:"port"`
 	}
@@ -102,9 +112,7 @@ func UpdatePortAllowedAddressPairs(baseURL, token, portID string, pairs []Allowe
 	url := fmt.Sprintf("%s/v2.0/ports/%s", baseURL, portID)
 
 	request := PortUpdateRequest{
-		Port: PortUpdateFields{
-			AllowedAddressPairs: pairs,
-		},
+		Port: fields,
 	}
 
 	apiResp, err := callPUT(url, token, request)
