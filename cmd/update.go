@@ -9,6 +9,7 @@ import (
 )
 
 var flagUpdatePortAllowedPairs string
+var flagUpdatePortSecurity bool
 
 var updateCmd = &cobra.Command{
 	Use:     "update",
@@ -457,7 +458,7 @@ var detachPortCmd = &cobra.Command{
 
 var updatePortCmd = &cobra.Command{
 	Use:   "port <port-id-or-name>",
-	Short: "Update port attributes (e.g. allowed address pairs)",
+	Short: "Update port attributes (e.g. allowed address pairs, port security)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		portRef := args[0]
@@ -473,26 +474,49 @@ var updatePortCmd = &cobra.Command{
 			return fmt.Errorf("failed to resolve port %q: %v", portRef, err)
 		}
 
-		if flagUpdatePortAllowedPairs == "" {
-			return fmt.Errorf("no update flags specified; use --allowed-address-pairs")
+		hasAllowedPairs := cmd.Flags().Changed("allowed-address-pairs")
+		hasPortSecurity := cmd.Flags().Changed("port-security")
+
+		if !hasAllowedPairs && !hasPortSecurity {
+			return fmt.Errorf("no update flags specified; use --allowed-address-pairs or --port-security")
 		}
 
-		var pairs []api.AllowedAddressPair
-		for _, ip := range strings.Split(flagUpdatePortAllowedPairs, ",") {
-			ip = strings.TrimSpace(ip)
-			if ip != "" {
-				pairs = append(pairs, api.AllowedAddressPair{IPAddress: ip})
+		update := api.PortUpdateFields{}
+
+		if hasAllowedPairs {
+			var pairs []api.AllowedAddressPair
+			for _, ip := range strings.Split(flagUpdatePortAllowedPairs, ",") {
+				ip = strings.TrimSpace(ip)
+				if ip != "" {
+					pairs = append(pairs, api.AllowedAddressPair{IPAddress: ip})
+				}
+			}
+			update.AllowedAddressPairs = pairs
+		}
+
+		if hasPortSecurity {
+			update.PortSecurityEnabled = &flagUpdatePortSecurity
+			// When disabling port security, must also clear security groups
+			if !flagUpdatePortSecurity {
+				empty := []string{}
+				update.SecurityGroups = &empty
 			}
 		}
 
-		port, err := api.UpdatePortAllowedAddressPairs(networkURL, tok.Value, portID, pairs)
+		port, err := api.UpdatePort(networkURL, tok.Value, portID, update)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("Updated port %s allowed address pairs:\n", portID)
-		for _, p := range port.AllowedAddressPairs {
-			fmt.Printf("  %s\n", p.IPAddress)
+		fmt.Printf("Updated port %s:\n", portID)
+		if hasPortSecurity && port.PortSecurityEnabled != nil {
+			fmt.Printf("  port_security_enabled: %v\n", *port.PortSecurityEnabled)
+		}
+		if hasAllowedPairs {
+			fmt.Printf("  allowed_address_pairs:\n")
+			for _, p := range port.AllowedAddressPairs {
+				fmt.Printf("    %s\n", p.IPAddress)
+			}
 		}
 		return nil
 	},
@@ -525,6 +549,7 @@ func init() {
 
 	// Port subcommand
 	updatePortCmd.Flags().StringVar(&flagUpdatePortAllowedPairs, "allowed-address-pairs", "", "Comma-separated IPs to allow (for Keepalived VIPs, etc.)")
+	updatePortCmd.Flags().BoolVar(&flagUpdatePortSecurity, "port-security", true, "Enable/disable port security (anti-spoofing)")
 
 	// Add to update command
 	updateCmd.AddCommand(updateVMCmd)
