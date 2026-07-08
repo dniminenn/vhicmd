@@ -143,6 +143,11 @@ var createImageCmd = &cobra.Command{
 			return nil
 		}
 
+		// Check if we're building a new image by growing an LV in an existing image
+		if flagFromImage != "" {
+			return runGrowImageFromImage(imageURL, tok.Value)
+		}
+
 		// If not creating from instance, proceed with regular image creation from file
 		// Validate file exists
 		if _, err := os.Stat(flagImageFile); os.IsNotExist(err) {

@@ -458,7 +458,7 @@ func UpdateImageMemberStatus(imageURL, token, imageID, memberID, status string) 
 func DownloadImage(imageURL, token, imageID, outputPath string) error {
 	url := fmt.Sprintf("%s/v2/images/%s/file", imageURL, imageID)
 
-	resp, err := httpclient.SendRequestWithToken("GET", url, token, nil)
+	resp, err := httpclient.SendStreamingGetRequest(url, token)
 	if err != nil {
 		return fmt.Errorf("failed to download image: %v", err)
 	}
