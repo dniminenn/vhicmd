@@ -132,6 +132,46 @@ func SendRequestWithToken(method, url, token string, body io.Reader) (*http.Resp
 	return resp, nil
 }
 
+// SendStreamingGetRequest sends a GET request with no client timeout, suitable
+// for streaming large downloads (e.g. image/volume files) that can take much
+// longer than the standard requestTimeout. The caller must close resp.Body.
+func SendStreamingGetRequest(url, token string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/octet-stream")
+	req.Header.Set("User-Agent", userAgent)
+	if token != "" {
+		req.Header.Set("X-Auth-Token", token)
+	}
+
+	if viper.GetBool("debug") {
+		printDebugDivider("request")
+		fmt.Printf("\033[1;32mURL:\033[0m %s\n", url)
+		fmt.Printf("\033[1;32mMethod:\033[0m %s\n", req.Method)
+		printDebugDivider("request headers")
+		printHeaders(req.Header)
+	}
+
+	// No timeout: large downloads can take minutes.
+	client := &http.Client{Timeout: 0}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send HTTP request: %w", err)
+	}
+
+	if viper.GetBool("debug") {
+		printDebugDivider("response")
+		fmt.Printf("\033[1;32mStatus:\033[0m %s\n", resp.Status)
+		printDebugDivider("response headers")
+		printHeaders(resp.Header)
+	}
+
+	return resp, nil
+}
+
 // SendLargePutRequest sends a PUT req but uses io.Reader for large uploads.
 func SendLargePutRequest(url, token string, data io.Reader) (*http.Response, error) {
 	req, err := http.NewRequest("PUT", url, data)
