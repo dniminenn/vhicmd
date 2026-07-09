@@ -62,7 +62,7 @@ func TestParseGuestfishSections(t *testing.T) {
 
 // Integration test against the real downloaded base image, when present.
 func TestDetectPVPartition_RealImage(t *testing.T) {
-	const img = "/home/jr/vhi-work/Rocky8-mqueue1G.qcow2"
+	const img = "/home/jr/vhi-work/base.qcow2"
 	if _, err := os.Stat(img); err != nil {
 		t.Skipf("base image not present: %v", err)
 	}
@@ -80,16 +80,17 @@ func TestDetectPVPartition_RealImage(t *testing.T) {
 	}
 }
 
-// TestGrowPipeline_RealImage exercises the exact qemu-img + virt-resize
-// orchestration used by runGrowImageFromImage (everything except the VHI
-// upload) against the real base image, and verifies /var (varlv) actually grew.
+// TestGrowPipeline_RealImage exercises the exact in-place grow orchestration
+// used by runGrowImageFromImage (everything except the VHI upload) against the
+// real base image, and verifies /var (varlv) actually grew without any
+// partition being renumbered (which would break the embedded GRUB prefix).
 func TestGrowPipeline_RealImage(t *testing.T) {
 	const (
-		img      = "/home/jr/vhi-work/Rocky8-mqueue1G.qcow2"
+		img      = "/home/jr/vhi-work/base.qcow2"
 		baseSize = int64(21587034112) // known virtual size of Rocky8-mqueue1G
 		growBy   = int64(20) << 30
 	)
-	for _, bin := range []string{"qemu-img", "virt-resize", "guestfish"} {
+	for _, bin := range []string{"qemu-img", "guestfish"} {
 		if _, err := exec.LookPath(bin); err != nil {
 			t.Skipf("%s not available", bin)
 		}
@@ -98,32 +99,45 @@ func TestGrowPipeline_RealImage(t *testing.T) {
 		t.Skipf("base image not present: %v", err)
 	}
 
-	part, err := detectPVPartition(img, "/dev/rootvg/varlv")
+	// Work on a copy: the pipeline mutates in place.
+	dst := filepath.Join(t.TempDir(), "grown.qcow2")
+	if err := runCmd("cp", "--sparse=always", img, dst); err != nil {
+		t.Fatalf("cp: %v", err)
+	}
+
+	part, err := detectPVPartition(dst, "/dev/rootvg/varlv")
 	if err != nil {
 		t.Fatalf("detectPVPartition: %v", err)
 	}
+	if part != "/dev/sda3" {
+		t.Fatalf("expected PV on /dev/sda3, got %s", part)
+	}
 
-	dst := filepath.Join(t.TempDir(), "grown.qcow2")
 	newSize := baseSize + growBy
-	if err := runCmd("qemu-img", "create", "-f", "qcow2", dst, strconv.FormatInt(newSize, 10)); err != nil {
-		t.Fatalf("qemu-img create: %v", err)
+	if err := runCmd("qemu-img", "resize", dst, strconv.FormatInt(newSize, 10)); err != nil {
+		t.Fatalf("qemu-img resize: %v", err)
 	}
-	if err := runCmd("virt-resize", "--expand", part, "--lv-expand", "/dev/rootvg/varlv", img, dst); err != nil {
-		t.Fatalf("virt-resize: %v", err)
+	if err := growPartitionAndLV(dst, part, "/dev/rootvg/varlv"); err != nil {
+		t.Fatalf("growPartitionAndLV: %v", err)
 	}
 
-	// Confirm varlv grew well past its original 5 GiB.
-	cmd := exec.Command("guestfish", "--ro", "-a", dst, "run", ":", "lvs-full")
-	cmd.Env = libguestfsEnv()
-	out, err := cmd.CombinedOutput()
+	// Confirm varlv grew to 25 GiB and the PV is still partition 3 (i.e. no
+	// renumbering happened: /boot must still be partition 4).
+	out, err := guestfishOutput(dst, true, "run\nlvs-full\necho ===PVS===\npvs\necho ===BOOT===\nvfs-type /dev/sda4\n")
 	if err != nil {
-		t.Fatalf("guestfish lvs-full: %v\n%s", err, out)
+		t.Fatalf("guestfish verify: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "varlv") {
+	if !strings.Contains(out, "varlv") {
 		t.Fatalf("varlv not found in grown image:\n%s", out)
 	}
 	// 26843545600 == 25 GiB, the expected grown size (5 + 20).
-	if !strings.Contains(string(out), "26843545600") {
+	if !strings.Contains(out, "26843545600") {
 		t.Errorf("expected varlv lv_size 26843545600 (25 GiB) in output:\n%s", out)
+	}
+	if !strings.Contains(out, "/dev/sda3") {
+		t.Errorf("PV moved off /dev/sda3 — partitions were renumbered:\n%s", out)
+	}
+	if !strings.Contains(out, "xfs") {
+		t.Errorf("expected xfs /boot still on /dev/sda4 — partitions were renumbered:\n%s", out)
 	}
 }

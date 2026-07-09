@@ -46,9 +46,9 @@ func runGrowImageFromImage(imageURL, token string) error {
 	}
 
 	// External tooling required for offline image surgery.
-	for _, bin := range []string{"qemu-img", "virt-resize", "guestfish"} {
+	for _, bin := range []string{"qemu-img", "guestfish"} {
 		if _, err := exec.LookPath(bin); err != nil {
-			return fmt.Errorf("%q not found in PATH: this command needs qemu-utils (qemu-img) and libguestfs-tools (virt-resize, guestfish)", bin)
+			return fmt.Errorf("%q not found in PATH: this command needs qemu-utils (qemu-img) and libguestfs-tools (guestfish)", bin)
 		}
 	}
 
@@ -102,12 +102,10 @@ func runGrowImageFromImage(imageURL, token string) error {
 			return fmt.Errorf("failed to create work dir %q: %v", workDir, err)
 		}
 	}
-	srcPath := filepath.Join(workDir, "source.qcow2")
-	dstPath := filepath.Join(workDir, "grown.qcow2")
+	imgPath := filepath.Join(workDir, "grow.qcow2")
 	if !flagKeepTemp {
 		defer func() {
-			_ = os.Remove(srcPath)
-			_ = os.Remove(dstPath)
+			_ = os.Remove(imgPath)
 			if flagWorkDir == "" {
 				_ = os.Remove(workDir)
 			}
@@ -115,35 +113,38 @@ func runGrowImageFromImage(imageURL, token string) error {
 	}
 
 	// 1. Download the source image.
-	fmt.Printf("\nDownloading source image to %s ...\n", srcPath)
-	if err := api.DownloadImage(imageURL, token, srcID, srcPath); err != nil {
+	fmt.Printf("\nDownloading source image to %s ...\n", imgPath)
+	if err := api.DownloadImage(imageURL, token, srcID, imgPath); err != nil {
 		return fmt.Errorf("failed to download source image: %v", err)
 	}
 
-	// 2. Determine which partition to expand (the VG's PV) if not supplied.
+	// 2. Determine which partition to expand (the VG's PV) if not supplied,
+	// and the target LV's filesystem type.
 	expandPart := flagExpandPart
 	if expandPart == "" {
-		expandPart, err = detectPVPartition(srcPath, flagExpandLV)
+		expandPart, err = detectPVPartition(imgPath, flagExpandLV)
 		if err != nil {
 			return fmt.Errorf("failed to auto-detect PV partition (pass --expand-part): %v", err)
 		}
 		fmt.Printf("Auto-detected PV partition: %s\n", expandPart)
 	}
 
-	// 3. Create the (larger) destination qcow2.
-	fmt.Printf("Creating destination qcow2 (%s) ...\n", humanBytes(newSize))
-	if err := runCmd("qemu-img", "create", "-f", "qcow2", dstPath, strconv.FormatInt(newSize, 10)); err != nil {
-		return fmt.Errorf("qemu-img create failed: %v", err)
+	// 3. Grow the qcow2 virtual size in place. Unlike virt-resize, this never
+	// copies or renumbers partitions, so the bootloader (whose embedded GRUB
+	// prefix references partitions by number) is untouched.
+	fmt.Printf("Growing qcow2 in place to %s ...\n", humanBytes(newSize))
+	if err := runCmd("qemu-img", "resize", imgPath, strconv.FormatInt(newSize, 10)); err != nil {
+		return fmt.Errorf("qemu-img resize failed: %v", err)
 	}
 
-	// 4. virt-resize: expand the PV partition and the target LV (and its fs).
-	fmt.Printf("Running virt-resize (expand %s, lv-expand %s) ...\n", expandPart, flagExpandLV)
-	if err := runCmd("virt-resize", "--expand", expandPart, "--lv-expand", flagExpandLV, srcPath, dstPath); err != nil {
-		return fmt.Errorf("virt-resize failed: %v", err)
+	// 4. Expand the PV partition into the new space and grow LV + filesystem.
+	fmt.Printf("Expanding %s and growing %s ...\n", expandPart, flagExpandLV)
+	if err := growPartitionAndLV(imgPath, expandPart, flagExpandLV); err != nil {
+		return err
 	}
 
 	// 5. Upload the grown image as a new Glance image.
-	f, err := os.Open(dstPath)
+	f, err := os.Open(imgPath)
 	if err != nil {
 		return fmt.Errorf("failed to open grown image: %v", err)
 	}
@@ -169,21 +170,89 @@ func runGrowImageFromImage(imageURL, token string) error {
 	return nil
 }
 
+// growPartitionAndLV expands partDev (e.g. /dev/sda3) to the end of the disk,
+// resizes the LVM PV on it, gives all new space to lvPath, and grows the LV's
+// filesystem. Everything is done in place via guestfish: no partition is moved
+// or renumbered, so the bootloader is unaffected. The partition must be the
+// last one on the disk (always true for the PV detected by detectPVPartition
+// after an in-place disk grow, since only the tail is new space).
+func growPartitionAndLV(imagePath, partDev, lvPath string) error {
+	// Split /dev/sda3 into disk (/dev/sda) and partition number (3).
+	i := len(partDev)
+	for i > 0 && partDev[i-1] >= '0' && partDev[i-1] <= '9' {
+		i--
+	}
+	disk, numStr := partDev[:i], partDev[i:]
+	partNum, err := strconv.Atoi(numStr)
+	if err != nil {
+		return fmt.Errorf("cannot parse partition number from %q", partDev)
+	}
+
+	// Probe the LV's filesystem type to pick the right grow command.
+	fsType, err := guestfishOutput(imagePath, true, fmt.Sprintf("run\nvfs-type %s\n", lvPath))
+	if err != nil {
+		return fmt.Errorf("failed to probe filesystem type of %s: %v", lvPath, err)
+	}
+	fsType = strings.TrimSpace(fsType)
+
+	var growFS string
+	switch fsType {
+	case "xfs":
+		// xfs_growfs operates on a mounted filesystem
+		growFS = fmt.Sprintf("mount %s /\nxfs-growfs /", lvPath)
+	case "ext2", "ext3", "ext4":
+		growFS = fmt.Sprintf("resize2fs %s", lvPath)
+	default:
+		return fmt.Errorf("unsupported filesystem %q on %s (xfs and ext2/3/4 are supported)", fsType, lvPath)
+	}
+
+	// -2049: end the partition 2048 sectors (1 MiB) before the disk end.
+	// Standard GPT reserves only 34 sectors for the backup table, but
+	// util-linux-created GPTs (like VHI's RL8 images) keep the backup table
+	// 2048 sectors from the end; exceeding the last usable sector makes
+	// parted fail with "unable to satisfy all constraints". Sacrificing
+	// <=1MiB keeps this correct for both layouts.
+	script := fmt.Sprintf(`run
+part-expand-gpt %s
+part-resize %s %d -2049
+pvresize %s
+lvresize-free %s 100
+%s
+`, disk, disk, partNum, partDev, lvPath, growFS)
+
+	out, err := guestfishOutput(imagePath, false, script)
+	if err != nil {
+		return fmt.Errorf("guestfish grow failed: %v\n%s", err, out)
+	}
+	return nil
+}
+
+// guestfishOutput runs a guestfish script against the image and returns its
+// combined output. readOnly selects --ro vs --rw.
+func guestfishOutput(imagePath string, readOnly bool, script string) (string, error) {
+	mode := "--rw"
+	if readOnly {
+		mode = "--ro"
+	}
+	cmd := exec.Command("guestfish", mode, "-a", imagePath)
+	cmd.Stdin = strings.NewReader(script)
+	cmd.Env = libguestfsEnv()
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
 // detectPVPartition inspects the qcow2 with guestfish and returns the partition
 // device that holds the LVM PV for the volume group of lvPath (e.g.
 // /dev/rootvg/varlv -> /dev/sda3). Errors if the LV is missing or the VG spans
 // more than one PV (in which case the caller should pass --expand-part).
 func detectPVPartition(imagePath, lvPath string) (string, error) {
 	script := "run\necho ===LVS===\nlvs\necho ===PVS===\npvs\n"
-	cmd := exec.Command("guestfish", "--ro", "-a", imagePath)
-	cmd.Stdin = strings.NewReader(script)
-	cmd.Env = libguestfsEnv()
-	out, err := cmd.CombinedOutput()
+	out, err := guestfishOutput(imagePath, true, script)
 	if err != nil {
-		return "", fmt.Errorf("guestfish probe failed: %v\n%s", err, string(out))
+		return "", fmt.Errorf("guestfish probe failed: %v\n%s", err, out)
 	}
 
-	lvs, pvs := parseGuestfishSections(string(out))
+	lvs, pvs := parseGuestfishSections(out)
 	found := false
 	for _, lv := range lvs {
 		if lv == lvPath {
