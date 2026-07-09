@@ -242,6 +242,7 @@ var createImageCmd = &cobra.Command{
 			Name:         name,
 			ContainerFmt: "bare",
 			DiskFmt:      format,
+			MinDisk:      flagGrowMinDisk,
 			Visibility:   flagGrowVis,
 		}
 
