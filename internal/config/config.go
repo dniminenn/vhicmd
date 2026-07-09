@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -69,12 +70,18 @@ func InitConfig(cfgFile string) (*viper.Viper, error) {
 		if err := os.MkdirAll(filepath.Dir(v.ConfigFileUsed()), 0700); err != nil {
 			return nil, err
 		}
-		f, err := os.Create(v.ConfigFileUsed())
+		// Create with 0600 directly; the file may hold credentials
+		f, err := os.OpenFile(v.ConfigFileUsed(), os.O_CREATE|os.O_WRONLY, 0600)
 		if err != nil {
 			return nil, err
 		}
-		f.Chmod(0600)
 		f.Close()
+	} else if fi, err := os.Stat(v.ConfigFileUsed()); err == nil && fi.Mode().Perm()&0077 != 0 {
+		// Config may hold credentials; tighten perms on pre-existing files.
+		// Best-effort: a shared RC dir may not be chmod-able by this user.
+		if err := os.Chmod(v.ConfigFileUsed(), 0600); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %s is group/world readable and could not be tightened: %v\n", v.ConfigFileUsed(), err)
+		}
 	}
 
 	// Environment

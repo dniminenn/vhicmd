@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -17,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/facette/natsort"
 	"github.com/jessegalley/vhicmd/api"
@@ -319,13 +319,12 @@ func validateIPs(ips []string) error {
 	return nil
 }
 
-// fetchFileOrURL fetches a file from a local path or a URL, allowing insecure TLS
+// fetchFileOrURL fetches a file from a local path or a URL. TLS is verified;
+// the payload may be executed as root in a new VM (cloud-init user-data), so
+// insecure fetches are not allowed.
 func fetchFileOrURL(path string) ([]byte, error) {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-		client := &http.Client{Transport: tr}
+		client := &http.Client{Timeout: 60 * time.Second}
 
 		resp, err := client.Get(path)
 		if err != nil {

@@ -132,7 +132,8 @@ func DeleteVolume(storageURL, token, volumeID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete volume: %v", err)
 	}
-	if resp.ResponseCode != 204 {
+	// Cinder returns 202 Accepted for async deletion
+	if resp.ResponseCode != 202 && resp.ResponseCode != 204 {
 		return fmt.Errorf("failed to delete volume [%d]: %s", resp.ResponseCode, resp.Response)
 	}
 	return nil
@@ -142,14 +143,11 @@ func DeleteVolume(storageURL, token, volumeID string) error {
 func WaitForVolumeStatus(storageURL, token, volumeID, targetStatus string) error {
 	maxAttempts := 30 // ~5 minutes with 10s intervals
 	for i := 0; i < maxAttempts; i++ {
-		resp, err := ListVolumes(storageURL, token, map[string]string{"id": volumeID})
+		volume, err := GetVolumeDetails(storageURL, token, volumeID)
 		if err != nil {
 			return fmt.Errorf("failed to get volume status: %v", err)
 		}
-		if len(resp.Volumes) == 0 {
-			return fmt.Errorf("volume %s not found", volumeID)
-		}
-		status := resp.Volumes[0].Status
+		status := volume.Status
 		if status == targetStatus {
 			return nil
 		}

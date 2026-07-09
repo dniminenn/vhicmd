@@ -109,9 +109,17 @@ var downloadVolumeCmd = &cobra.Command{
 		imageID := resp.OsVolumeUploadImage.ImageID
 		fmt.Printf("Image creation started with ID: %s\n", imageID)
 
+		// Delete the temporary image on any failure below
+		cleanupTempImage := func() {
+			if err := api.DeleteImage(imageURL, tok.Value, imageID); err != nil {
+				fmt.Printf("Warning: failed to delete temporary image %s: %v\n", imageID, err)
+			}
+		}
+
 		fmt.Printf("Waiting for image to become active...\n")
 		maxAttempts := 60 // 5 minutes with 5 second intervals
 		var lastStatus string
+		active := false
 		for attempt := 0; attempt < maxAttempts; attempt++ {
 			image, err := api.GetImageDetails(imageURL, tok.Value, imageID)
 			if err != nil {
@@ -127,22 +135,25 @@ var downloadVolumeCmd = &cobra.Command{
 
 			if image.Status == "active" {
 				fmt.Printf("Image is now active\n")
+				active = true
 				break
 			} else if image.Status == "error" {
+				cleanupTempImage()
 				return fmt.Errorf("image creation failed with status: error")
 			}
 
-			if attempt == maxAttempts-1 {
-				return fmt.Errorf("timed out waiting for image to become active")
-			}
-
 			time.Sleep(5 * time.Second)
+		}
+		if !active {
+			cleanupTempImage()
+			return fmt.Errorf("timed out waiting for image %s to become active (last status: %s)", imageID, lastStatus)
 		}
 
 		// Download the image
 		fmt.Printf("Downloading image...\n")
 		err = api.DownloadImage(imageURL, tok.Value, imageID, outputPath)
 		if err != nil {
+			cleanupTempImage()
 			return fmt.Errorf("failed to download image: %v", err)
 		}
 

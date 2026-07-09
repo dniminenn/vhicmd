@@ -91,6 +91,7 @@ var createImageCmd = &cobra.Command{
 			// Monitor image status until it's active
 			maxAttempts := 60 // 5 minutes with 5 second intervals
 			var lastStatus string
+			active := false
 			for attempt := 0; attempt < maxAttempts; attempt++ {
 				// List all images and find the one with our ID
 				images, err := api.ListImages(imageURL, tok.Value, map[string]string{"id": imageID})
@@ -127,16 +128,16 @@ var createImageCmd = &cobra.Command{
 
 				if status == "active" {
 					fmt.Printf("Image is now active\n")
+					active = true
 					break
 				} else if status == "error" {
 					return fmt.Errorf("image creation failed with status: error")
 				}
 
-				if attempt == maxAttempts-1 {
-					return fmt.Errorf("timed out waiting for image to become active")
-				}
-
 				time.Sleep(5 * time.Second)
+			}
+			if !active {
+				return fmt.Errorf("timed out waiting for image %s to become active (last status: %s)", imageID, lastStatus)
 			}
 
 			fmt.Printf("Image created successfully: ID: %s, Name: %s\n", imageID, flagImageName)
@@ -241,7 +242,7 @@ var createImageCmd = &cobra.Command{
 			Name:         name,
 			ContainerFmt: "bare",
 			DiskFmt:      format,
-			Visibility:   "shared",
+			Visibility:   flagGrowVis,
 		}
 
 		imageID, err := api.CreateAndUploadImage(imageURL, tok.Value, req, file)
@@ -260,6 +261,10 @@ var createVolumeCmd = &cobra.Command{
 	Aliases: []string{"vol"},
 	Short:   "Create a new storage volume",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if flagVolumeImage == "" && flagVolumeSize <= 0 {
+			return fmt.Errorf("--size is required unless creating from an image (--image)")
+		}
+
 		storageURL, err := validateTokenEndpoint(tok, "volumev3")
 		if err != nil {
 			return err
@@ -396,7 +401,6 @@ var (
 	flagPortIP            string
 	flagPortAllowedPairs  string
 	flagInstanceID        string
-	flagDeleteSnapshot    bool
 )
 
 func init() {
@@ -432,17 +436,12 @@ func init() {
 	createVolumeCmd.Flags().StringVar(&flagVolumeImage, "image", "", "Image ID to create volume from")
 
 	createVolumeCmd.MarkFlagRequired("name")
-	// Only require size if not creating from image
-	if flagVolumeImage == "" {
-		createVolumeCmd.MarkFlagRequired("size")
-	}
 
 	// Flags for create image
 	createImageCmd.Flags().StringVar(&flagImageFile, "file", "", "Path to the image file")
 	createImageCmd.Flags().StringVar(&flagImageName, "name", "", "Name of the image")
 	createImageCmd.Flags().StringVar(&flagDiskFormat, "format", "", "Disk format (qcow2, raw, vmdk, iso)")
 	createImageCmd.Flags().StringVar(&flagInstanceID, "instance", "", "VM instance ID or name to snapshot")
-	createImageCmd.Flags().BoolVar(&flagDeleteSnapshot, "delete-snapshot", true, "Delete snapshot after creating template")
 
 	// Flags for create port
 	createPortCmd.Flags().StringVar(&flagPortNetwork, "network", "", "Network ID or name")

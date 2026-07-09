@@ -360,17 +360,29 @@ func waitForImageReady(imageURL, token, imageID string, debug bool) error {
 func UpdateImageVisibility(imageURL, token, imageID, visibility string) error {
 	url := fmt.Sprintf("%s/v2/images/%s", imageURL, imageID)
 
-	request := UpdateImageVisibilityRequest{
-		Visibility: visibility,
+	// Glance image updates use JSON Patch with its own content type
+	patch := []map[string]interface{}{
+		{
+			"op":    "replace",
+			"path":  "/visibility",
+			"value": visibility,
+		},
 	}
 
-	apiResp, err := callPATCH(url, token, request)
+	jsonData, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("error marshaling patch: %v", err)
+	}
+
+	resp, err := httpclient.SendImagePatch(url, token, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to update image visibility: %v", err)
 	}
+	defer resp.Body.Close()
 
-	if apiResp.ResponseCode != 200 {
-		return fmt.Errorf("visibility update failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("visibility update failed [%d]: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil
@@ -498,13 +510,20 @@ func UpdateImageProperties(imageURL, token, imageID string, properties map[strin
 		patches = append(patches, patch)
 	}
 
-	apiResp, err := callPATCH(url, token, patches)
+	jsonData, err := json.Marshal(patches)
+	if err != nil {
+		return fmt.Errorf("error marshaling patch: %v", err)
+	}
+
+	resp, err := httpclient.SendImagePatch(url, token, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to update image properties: %v", err)
 	}
+	defer resp.Body.Close()
 
-	if apiResp.ResponseCode != 200 {
-		return fmt.Errorf("update properties failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("update properties failed [%d]: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil
