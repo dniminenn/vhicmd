@@ -19,7 +19,7 @@ type DomainListResponse struct {
 func ListDomains(identityUrl, token string) (DomainListResponse, error) {
 	var result DomainListResponse
 
-	apiResp, err := callGET(identityUrl, token)
+	apiResp, err := callGET(fmt.Sprintf("%s/domains", identityUrl), token)
 	if err != nil {
 		return result, fmt.Errorf("failed to list domains: %v", err)
 	}

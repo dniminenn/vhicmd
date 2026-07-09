@@ -25,8 +25,13 @@ var listDomainsCmd = &cobra.Command{
 	Use:   "domains",
 	Short: "List domains [Req: admin]",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		identityURL, err := validateTokenEndpoint(tok, "identity")
+		if err != nil {
+			return err
+		}
+
 		// Call the API
-		resp, err := api.ListDomains(tok.Host, tok.Value)
+		resp, err := api.ListDomains(identityURL, tok.Value)
 		if err != nil {
 			return err
 		}
@@ -437,6 +442,9 @@ var listVmCmd = &cobra.Command{
 		}
 		if marker, _ := cmd.Flags().GetString("marker"); marker != "" {
 			queryParams["marker"] = marker
+		}
+		if status, _ := cmd.Flags().GetString("status"); status != "" {
+			queryParams["status"] = status
 		}
 
 		resp, err := api.ListVMsDetail(computeURL, tok.Value, queryParams)

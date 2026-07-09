@@ -66,8 +66,16 @@ For admin access, use "default" and "admin" respectively.`,
 			}
 		}
 
-		// Get password from flag, config, or prompt
+		// Get password from passfile, flag, config, or prompt
 		password := flagPassword
+		if password == "" && flagAuthFile != "" {
+			data, err := os.ReadFile(flagAuthFile)
+			if err != nil {
+				fmt.Printf("ERROR: failed to read passfile: %v\n", err)
+				os.Exit(2)
+			}
+			password = strings.TrimSpace(string(data))
+		}
 		if password == "" {
 			password = viper.GetString("password")
 		}
@@ -240,7 +248,6 @@ func init() {
 	authCmd.Flags().StringVarP(&flagUsername, "username", "u", "", "username to authenticate with")
 	authCmd.Flags().StringVarP(&flagPassword, "password", "p", "", "password to authenticate with")
 	authCmd.Flags().StringVarP(&flagHost, "host", "H", "", "VHI host to authenticate against")
-	authCmd.MarkFlagsMutuallyExclusive("password", "passfile")
 	authCmd.MarkFlagsMutuallyExclusive("password", "passfile")
 	authCmd.MarkFlagFilename("passfile") // not really needed with Viper config but left for backward compatibility
 }

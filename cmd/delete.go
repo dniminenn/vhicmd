@@ -79,14 +79,17 @@ var deleteVolumeCmd = &cobra.Command{
 	Short:   "Delete a volume",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		volumeID := args[0]
-
-		blockURL, err := validateTokenEndpoint(tok, "block")
+		storageURL, err := validateTokenEndpoint(tok, "volumev3")
 		if err != nil {
 			return err
 		}
 
-		err = api.DeleteVolume(blockURL, tok.Value, volumeID)
+		volumeID, err := api.GetVolumeIDByName(storageURL, tok.Value, args[0])
+		if err != nil {
+			return err
+		}
+
+		err = api.DeleteVolume(storageURL, tok.Value, volumeID)
 		if err != nil {
 			return err
 		}

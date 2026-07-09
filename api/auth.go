@@ -256,13 +256,12 @@ func Authenticate(host, domain, project, username, password string, force bool) 
 }
 
 // AuthenticateById uses domain ID instead of name
-// Broken currently, need to fix - project ID not getting parsed
-// TODO: Fix this
 func AuthenticateById(host, domainID, project, username, password string) (string, error) {
 	// Try existing token first
 	existingToken, err := LoadTokenStruct(host)
-	if err == nil {
-		return existingToken.Project, nil
+	if err == nil && project == existingToken.Project {
+		fmt.Printf("Using existing token for %s, project %s\n", host, project)
+		return existingToken.Value, nil
 	}
 
 	url := fmt.Sprintf("https://%s:5000/v3/auth/tokens", host)
