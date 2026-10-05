@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"crypto/md5"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,7 +37,15 @@ var createImageCmd = &cobra.Command{
 			return err
 		}
 
-		// Check if we're creating from an instance
+		if flagJsonOutput {
+			// Progress output, the API layer included, goes to stderr so stdout carries only the JSON.
+			os.Stdout = os.Stderr
+			defer func() { os.Stdout = imageOut }()
+		}
+		if flagImageSHA256 != "" && flagImageFile == "" {
+			return fmt.Errorf("--sha256 applies only to --file uploads")
+		}
+
 		// Check if we're creating from an instance
 		if flagInstanceID != "" {
 			computeURL, err := validateTokenEndpoint(tok, "compute")
@@ -140,8 +152,7 @@ var createImageCmd = &cobra.Command{
 				return fmt.Errorf("timed out waiting for image %s to become active (last status: %s)", imageID, lastStatus)
 			}
 
-			fmt.Printf("Image created successfully: ID: %s, Name: %s\n", imageID, flagImageName)
-			return nil
+			return printCreatedImage(imageURL, tok.Value, imageID, "")
 		}
 
 		// Check if we're building a new image by growing an LV in an existing image
@@ -230,6 +241,19 @@ var createImageCmd = &cobra.Command{
 			name = fmt.Sprintf("%s-%s", filepath.Base(flagImageFile), time.Now().Format("20060102-150405"))
 		}
 
+		var localMD5 string
+		if flagImageSHA256 != "" {
+			sum256, sumMD5, err := hashFile(flagImageFile)
+			if err != nil {
+				return err
+			}
+			if !strings.EqualFold(sum256, strings.TrimSpace(flagImageSHA256)) {
+				return fmt.Errorf("sha256 mismatch for %s: file is %s, expected %s", flagImageFile, sum256, flagImageSHA256)
+			}
+			fmt.Printf("sha256 verified: %s\n", sum256)
+			localMD5 = sumMD5
+		}
+
 		// Get file size for progress display
 		info, err := file.Stat()
 		if err != nil {
@@ -251,9 +275,55 @@ var createImageCmd = &cobra.Command{
 			return fmt.Errorf("failed to create/upload image: %v", err)
 		}
 
-		fmt.Printf("Image created: ID: %s, Name: %s\n", imageID, name)
-		return nil
+		return printCreatedImage(imageURL, tok.Value, imageID, localMD5)
 	},
+}
+
+// imageOut is the real stdout for the create image result.
+var imageOut = os.Stdout
+
+// hashFile returns the sha256 and md5 hex digests of a file in one read.
+func hashFile(path string) (string, string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to open image file: %v", err)
+	}
+	defer f.Close()
+	h256, hMD5 := sha256.New(), md5.New()
+	if _, err := io.Copy(io.MultiWriter(h256, hMD5), f); err != nil {
+		return "", "", fmt.Errorf("failed to hash %s: %v", path, err)
+	}
+	return hex.EncodeToString(h256.Sum(nil)), hex.EncodeToString(hMD5.Sum(nil)), nil
+}
+
+// printCreatedImage prints the new image from Glance. A non-empty wantMD5 must equal the Glance checksum.
+func printCreatedImage(imageURL, token, imageID, wantMD5 string) error {
+	d, err := api.GetImageDetails(imageURL, token, imageID)
+	if err != nil {
+		return fmt.Errorf("image %s created, but reading its details failed: %v", imageID, err)
+	}
+	if wantMD5 != "" && d.Checksum != "" && d.Checksum != wantMD5 {
+		return fmt.Errorf("image %s: Glance checksum %s does not match the local file md5 %s", imageID, d.Checksum, wantMD5)
+	}
+	if flagJsonOutput {
+		b, err := json.MarshalIndent(d, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(imageOut, string(b))
+		return nil
+	}
+	fmt.Fprintf(imageOut, "Image created: ID: %s, Name: %s\n", d.ID, d.Name)
+	if d.MinDisk > 0 {
+		fmt.Fprintf(imageOut, "Min disk: %d GB\n", d.MinDisk)
+	}
+	if d.Checksum != "" {
+		fmt.Fprintf(imageOut, "Checksum: md5 %s\n", d.Checksum)
+	}
+	if d.OsHashValue != "" {
+		fmt.Fprintf(imageOut, "Hash: %s %s\n", d.OsHashAlgo, d.OsHashValue)
+	}
+	return nil
 }
 
 // Subcommand: create volume
@@ -412,7 +482,7 @@ func init() {
 	createVMCmd.Flags().StringVar(&flagVMName, "name", "", "Name of the virtual machine")
 	createVMCmd.Flags().StringVar(&flagFlavorRef, "flavor", "", "Flavor ID for the virtual machine")
 	createVMCmd.Flags().StringVar(&flagImageRef, "image", "", "Image ID for the virtual machine")
-	createVMCmd.Flags().StringVar(&flagNetworkCSV, "networks", "", "Comma-separated list of network UUIDs")
+	createVMCmd.Flags().StringVar(&flagNetworkCSV, "networks", "", "Comma-separated list of network names or UUIDs")
 	createVMCmd.Flags().StringVar(&flagIPCSV, "ips", "", "Comma-separated list of IP addresses ('none' for unmanaged network)")
 	createVMCmd.Flags().IntVar(&flagVMSize, "size", 0, "Size in GB of boot volume")
 	createVMCmd.Flags().BoolVar(&flagVMNetboot, "netboot", false, "Enable network boot with blank volume (deprecated, use --image)")
@@ -443,6 +513,7 @@ func init() {
 	createImageCmd.Flags().StringVar(&flagImageName, "name", "", "Name of the image")
 	createImageCmd.Flags().StringVar(&flagDiskFormat, "format", "", "Disk format (qcow2, raw, vmdk, iso)")
 	createImageCmd.Flags().StringVar(&flagInstanceID, "instance", "", "VM instance ID or name to snapshot")
+	createImageCmd.Flags().StringVar(&flagImageSHA256, "sha256", "", "Expected sha256 of --file; verified before upload, and the upload is checked against the Glance checksum")
 
 	// Flags for create port
 	createPortCmd.Flags().StringVar(&flagPortNetwork, "network", "", "Network ID or name")
