@@ -132,10 +132,11 @@ var createVMCmd = &cobra.Command{
 			}
 
 			for i, netName := range networkIDs {
-				nid, err := api.GetNetworkIDByName(networkURL, tok.Value, netName)
-				if err == nil {
-					networkIDs[i] = nid
+				nid, err := api.GetNetworkIDByName(networkURL, tok.Value, strings.TrimSpace(netName))
+				if err != nil {
+					return fmt.Errorf("network %q: %v", strings.TrimSpace(netName), err)
 				}
+				networkIDs[i] = nid
 			}
 
 			var netSlice []map[string]interface{}

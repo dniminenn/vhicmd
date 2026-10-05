@@ -21,6 +21,7 @@ var (
 	flagGrowVis     string
 	flagWorkDir     string
 	flagKeepTemp    bool
+	flagImageSHA256 string
 )
 
 func init() {
@@ -163,11 +164,10 @@ func runGrowImageFromImage(imageURL, token string) error {
 		return fmt.Errorf("failed to create/upload new image: %v", err)
 	}
 
-	fmt.Printf("\nImage created: ID: %s, Name: %s (min_disk %d GB)\n", newID, flagImageName, minDisk)
 	if flagKeepTemp {
 		fmt.Printf("Temporary files kept in %s\n", workDir)
 	}
-	return nil
+	return printCreatedImage(imageURL, token, newID, "")
 }
 
 // growPartitionAndLV expands partDev (e.g. /dev/sda3) to the end of the disk,

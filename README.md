@@ -169,8 +169,8 @@ Manage VM state:
 ```bash
 vhicmd pause <vm-id>            # Pause VM
 vhicmd unpause <vm-id>          # Unpause VM
-vhicmd reboot soft <vm-id>      # Soft reboot
-vhicmd reboot hard <vm-id>      # Hard reboot
+vhicmd reboot soft <vm-id>      # Soft reboot (asks first)
+vhicmd reboot hard <vm-id>      # Hard reboot (asks first)
 ```
 
 View usage information:
@@ -246,10 +246,10 @@ vhicmd update vm flavor confirm <vm-id>                # Confirm change
 vhicmd update vm flavor revert <vm-id>                 # Revert change
 ```
 
-Reboot VM:
+Reboot VM (shows the VM name and asks first; `--yes` skips the prompt):
 ```bash
-vhicmd reboot soft <vm-id>
-vhicmd reboot hard <vm-id>
+vhicmd reboot soft <vm-id|vm-name>
+vhicmd reboot hard <vm-id|vm-name> --yes
 ```
 
 Network interfaces:
@@ -349,8 +349,12 @@ Create image:
 ```bash
 vhicmd create image --file <path> \
   --name <name> \
-  [--format qcow2|raw|vmdk|iso]
+  [--format qcow2|raw|vmdk|iso] \
+  [--sha256 <expected>] \
+  [--json]
 ```
+
+`--sha256` checks the file before upload and then checks the upload against the Glance checksum. `--json` prints the new image as JSON on stdout; progress goes to stderr.
 
 Delete image:
 ```bash
