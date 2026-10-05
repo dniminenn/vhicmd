@@ -1,0 +1,29 @@
+version: 2
+
+builds:
+  - main: .
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/jessegalley/vhicmd/cmd.version={{.Version}} -X github.com/jessegalley/vhicmd/cmd.buildTime={{.Date}}
+
+archives:
+  - formats: [tar.gz]
+
+nfpms:
+  - package_name: vhicmd
+    vendor: dniminenn
+    maintainer: JR Lanteigne <root@dnim.dev>
+    homepage: https://github.com/dniminenn/vhicmd
+    description: CLI for Virtuozzo Hybrid Infrastructure (OpenStack APIs)
+    formats: [rpm, deb]
+    bindir: /usr/bin
+
+checksum:
+  name_template: SHA256SUMS
+
+changelog:
+  disable: true
