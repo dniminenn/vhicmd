@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	version   = "dev"     // set by the release build
 	buildTime = "unknown" // set by Makefile
 	goversion = runtime.Version()
 )
@@ -17,7 +18,7 @@ var versionCmd = &cobra.Command{
 	Aliases: []string{"v"},
 	Short:   "Print build information",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("Build: %s\nGo: %s\n", buildTime, goversion)
+		fmt.Printf("Version: %s\nBuild: %s\nGo: %s\n", version, buildTime, goversion)
 	},
 }
 
