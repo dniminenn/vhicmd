@@ -1,20 +1,37 @@
 version: 2
 
 builds:
-  - main: .
+  - id: linux
+    main: .
     env:
       - CGO_ENABLED=0
-    goos: [linux, darwin]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/jessegalley/vhicmd/cmd.version={{.Version}} -X github.com/jessegalley/vhicmd/cmd.buildTime={{.Date}}
+  - id: darwin
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin]
     goarch: [amd64, arm64]
     flags: [-trimpath]
     ldflags:
       - -s -w -X github.com/jessegalley/vhicmd/cmd.version={{.Version}} -X github.com/jessegalley/vhicmd/cmd.buildTime={{.Date}}
 
 archives:
-  - formats: [tar.gz]
+  - id: tarball
+    formats: [tar.gz]
+  # static single-file binaries, no archive
+  - id: raw
+    ids: [linux]
+    formats: [binary]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 nfpms:
   - package_name: vhicmd
+    ids: [linux]
     vendor: dniminenn
     maintainer: JR Lanteigne <root@dnim.dev>
     homepage: https://github.com/dniminenn/vhicmd
