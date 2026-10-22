@@ -55,6 +55,9 @@ Use "vhicmd [command] --help" for more information about a command.
 
 ## Build & Installation
 
+Download a release from https://github.com/dniminenn/vhicmd/releases: a static single-file
+binary (`vhicmd_<version>_linux_amd64`), rpm, deb or tar.gz. Or build from source:
+
 ```bash
 make
 cd bin && mv vhicmd /usr/local/bin
