@@ -102,6 +102,20 @@ Configuration Options:
 - `networks`: Default networks for VM creation (CSV, optional)
 - `flavor_id`: Default flavor for VM creation (optional)
 - `image_id`: Default image for VM creation (optional)
+- `app_cred_id`, `app_cred_secret`: Application credential (API key), replaces username/password
+- `app_cred_file`: Path to a yaml file with `id` and `secret`, alternative to the two keys above
+
+Application credential configuration:
+```yaml
+host: panel-vhi1.yourhost.com
+app_cred_id: 0123456789abcdef0123456789abcdef
+app_cred_secret: yoursecret
+```
+
+An application credential is bound to the project it was created in, so `domain`, `project`,
+`username` and `password` are ignored when one is set, and `switch-project` is refused. Do not put
+the credential id and secret in `username`/`password`: that is password auth and returns 401.
+If both an application credential and a password are configured, the application credential wins.
 
 Manage configuration:
 ```bash
@@ -122,7 +136,10 @@ vhicmd auth <domain> <project> --host <vhi host>
 # Command line authentication
 vhicmd auth <domain> <project> -u username -p password
 
-# Application credential (yaml file with 'id' and 'secret'), saved as app_cred_file
+# Application credential from app_cred_id/app_cred_secret or app_cred_file in .vhirc
+vhicmd auth
+
+# Application credential from a yaml file with 'id' and 'secret', saved as app_cred_file
 vhicmd auth --appcred ~/.vhicmd.appcred
 
 # Switch between projects

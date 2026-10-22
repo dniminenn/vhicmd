@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -31,7 +32,12 @@ Project names with spaces don't require quotes:
   vhicmd auth myDomain my project name
 
 Domain is the *name* not the ID. To use ID, pass the -i flag.
-For admin access, use "default" and "admin" respectively.`,
+For admin access, use "default" and "admin" respectively.
+
+Application credentials (API keys) do not go in username/password. Use
+  vhicmd auth --appcred FILE     # yaml file with 'id' and 'secret'
+or set app_cred_id and app_cred_secret in .vhirc. The credential is bound to
+one project, so domain, project, username and password are ignored.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if flagAppCredFile != "" || hasAppCred() {
 			host := flagHost
@@ -288,6 +294,8 @@ func init() {
 	authCmd.MarkFlagFilename("passfile") // not really needed with Viper config but left for backward compatibility
 }
 
+var appCredIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 // hasAppCred reports whether the config selects application credential auth.
 func hasAppCred() bool {
 	return viper.GetString("app_cred_file") != "" ||
@@ -337,6 +345,9 @@ func doAuth(host, domain, project, username, password string) (string, error) {
 		authToken, authErr = api.Authenticate(host, domain, project, username, password, false)
 	}
 	if authErr != nil {
+		if appCredIDPattern.MatchString(username) && strings.Contains(authErr.Error(), `"code":401`) {
+			return "", fmt.Errorf("couldn't get auth token, %v\nusername looks like an application credential id; set app_cred_id/app_cred_secret instead of username/password", authErr)
+		}
 		return "", fmt.Errorf("couldn't get auth token, %v", authErr)
 	}
 

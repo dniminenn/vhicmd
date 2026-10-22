@@ -18,7 +18,13 @@ var configKeys = []string{
 	"networks",
 	"flavor_id",
 	"image_id",
+	"app_cred_file",
+	"app_cred_id",
+	"app_cred_secret",
 }
+
+// secretConfigKeys are masked by config list/get
+var secretConfigKeys = map[string]bool{"password": true, "app_cred_secret": true}
 
 var configCmd = &cobra.Command{
 	Use:     "config",
@@ -43,7 +49,7 @@ var configListCmd = &cobra.Command{
 			value := settings[key]
 			if value == nil || value == "" {
 				fmt.Printf("%s: UNSET\n", key)
-			} else if key == "password" && value != "" {
+			} else if secretConfigKeys[key] {
 				fmt.Printf("%s: ********\n", key)
 			} else {
 				fmt.Printf("%s: %v\n", key, value)
@@ -119,7 +125,7 @@ var configGetCmd = &cobra.Command{
 		value := v.Get(key)
 		if value == nil || value == "" {
 			fmt.Printf("%s: UNSET\n", key)
-		} else if key == "password" {
+		} else if secretConfigKeys[key] {
 			fmt.Printf("%s: ********\n", key)
 		} else {
 			fmt.Printf("%s: %v\n", key, value)
