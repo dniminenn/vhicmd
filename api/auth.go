@@ -324,6 +324,61 @@ func AuthenticateById(host, domainID, project, username, password string) (strin
 	return apiResp.TokenHeader, nil
 }
 
+// AppCredPayload is the auth request body for keystone application credentials
+type AppCredPayload struct {
+	Auth struct {
+		Identity struct {
+			Methods               []string `json:"methods"`
+			ApplicationCredential struct {
+				ID     string `json:"id"`
+				Secret string `json:"secret"`
+			} `json:"application_credential"`
+		} `json:"identity"`
+	} `json:"auth"`
+}
+
+// AuthenticateAppCred authenticates with an application credential. The credential
+// is bound to one project, so the project comes from the response, not the caller.
+func AuthenticateAppCred(host, id, secret string) (string, string, error) {
+	var payload AppCredPayload
+	payload.Auth.Identity.Methods = []string{"application_credential"}
+	payload.Auth.Identity.ApplicationCredential.ID = id
+	payload.Auth.Identity.ApplicationCredential.Secret = secret
+
+	url := fmt.Sprintf("https://%s:5000/v3/auth/tokens", host)
+	apiResp, err := callPOST(url, "", payload)
+	if err != nil {
+		return "", "", fmt.Errorf("authentication request failed: %v", err)
+	}
+	if apiResp.ResponseCode != 201 {
+		return "", "", fmt.Errorf("authentication failed: %v", apiResp.Response)
+	}
+	if apiResp.TokenHeader == "" {
+		return "", "", fmt.Errorf("no token found in the response")
+	}
+
+	var authResponse AuthResponse
+	if err := json.Unmarshal([]byte(apiResp.Response), &authResponse); err != nil {
+		return "", "", fmt.Errorf("failed to parse auth response: %v", err)
+	}
+
+	endpoints := make(map[string]string)
+	for _, svc := range authResponse.Token.Catalog {
+		for _, ep := range svc.Endpoints {
+			if ep.Interface == "public" {
+				endpoints[svc.Type] = ep.URL
+			}
+		}
+	}
+
+	project := authResponse.Token.Project.Name
+	if err := SaveToken(host, project, apiResp.TokenHeader, authResponse.Token.ExpiresAt, endpoints); err != nil {
+		return "", "", fmt.Errorf("failed to save token: %v", err)
+	}
+
+	return apiResp.TokenHeader, project, nil
+}
+
 // GetTokenFilePath returns the path to the token file
 func GetTokenFilePath() (string, error) {
 	// Check VHICMD_RCDIR env var first

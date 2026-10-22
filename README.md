@@ -122,6 +122,9 @@ vhicmd auth <domain> <project> --host <vhi host>
 # Command line authentication
 vhicmd auth <domain> <project> -u username -p password
 
+# Application credential (yaml file with 'id' and 'secret'), saved as app_cred_file
+vhicmd auth --appcred ~/.vhicmd.appcred
+
 # Switch between projects
 vhicmd switch-project [project]   # Interactive if no project specified
 ```

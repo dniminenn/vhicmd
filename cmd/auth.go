@@ -33,6 +33,32 @@ Project names with spaces don't require quotes:
 Domain is the *name* not the ID. To use ID, pass the -i flag.
 For admin access, use "default" and "admin" respectively.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if flagAppCredFile != "" || hasAppCred() {
+			host := flagHost
+			if host == "" {
+				host = viper.GetString("host")
+			}
+			if host == "" {
+				fmt.Printf("ERROR: no host found in flags or config. Provide --host or set 'host' in .vhirc\n")
+				os.Exit(2)
+			}
+			project, err := doAppCredAuth(host, flagAppCredFile)
+			if err != nil {
+				fmt.Printf("ERROR: %v\n", err)
+				os.Exit(2)
+			}
+			fmt.Printf("Authentication OK! (application credential, project %s)\n", project)
+			if flagAppCredFile != "" && viper.GetString("app_cred_file") != flagAppCredFile {
+				viper.Set("app_cred_file", flagAppCredFile)
+				viper.Set("project", project)
+				if err := viper.WriteConfig(); err != nil {
+					fmt.Printf("ERROR: failed to save config: %v\n", err)
+					os.Exit(2)
+				}
+			}
+			return
+		}
+
 		domain := viper.GetString("domain")
 		project := viper.GetString("project")
 
@@ -145,6 +171,9 @@ If no project is specified, displays available projects and prompts for selectio
     vhicmd switch-project my project # Direct project switch
     `,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if hasAppCred() {
+			return fmt.Errorf("application credentials are bound to one project; create one for the other project instead")
+		}
 		user := viper.GetString("username")
 		pass := viper.GetString("password")
 		if user == "" || pass == "" {
@@ -237,6 +266,8 @@ var (
 	flagUseIds   bool
 	flagAuthFile string
 	flagHost     string
+
+	flagAppCredFile string
 )
 
 func init() {
@@ -248,8 +279,53 @@ func init() {
 	authCmd.Flags().StringVarP(&flagUsername, "username", "u", "", "username to authenticate with")
 	authCmd.Flags().StringVarP(&flagPassword, "password", "p", "", "password to authenticate with")
 	authCmd.Flags().StringVarP(&flagHost, "host", "H", "", "VHI host to authenticate against")
+	authCmd.Flags().StringVarP(&flagAppCredFile, "appcred", "a", "", "yaml file with application credential 'id' and 'secret'")
+	authCmd.MarkFlagFilename("appcred")
 	authCmd.MarkFlagsMutuallyExclusive("password", "passfile")
+	authCmd.MarkFlagsMutuallyExclusive("appcred", "password")
+	authCmd.MarkFlagsMutuallyExclusive("appcred", "passfile")
+	authCmd.MarkFlagsMutuallyExclusive("appcred", "username")
 	authCmd.MarkFlagFilename("passfile") // not really needed with Viper config but left for backward compatibility
+}
+
+// hasAppCred reports whether the config selects application credential auth.
+func hasAppCred() bool {
+	return viper.GetString("app_cred_file") != "" ||
+		(viper.GetString("app_cred_id") != "" && viper.GetString("app_cred_secret") != "")
+}
+
+// loadAppCred reads id/secret from path, else app_cred_file, else app_cred_id/app_cred_secret.
+func loadAppCred(path string) (string, string, error) {
+	if path == "" {
+		path = viper.GetString("app_cred_file")
+	}
+	if path == "" {
+		return viper.GetString("app_cred_id"), viper.GetString("app_cred_secret"), nil
+	}
+
+	v := viper.New()
+	v.SetConfigFile(path)
+	v.SetConfigType("yaml")
+	if err := v.ReadInConfig(); err != nil {
+		return "", "", fmt.Errorf("failed to read application credential file: %v", err)
+	}
+	id, secret := strings.TrimSpace(v.GetString("id")), strings.TrimSpace(v.GetString("secret"))
+	if id == "" || secret == "" {
+		return "", "", fmt.Errorf("%s must set both 'id' and 'secret'", path)
+	}
+	return id, secret, nil
+}
+
+func doAppCredAuth(host, path string) (string, error) {
+	id, secret, err := loadAppCred(path)
+	if err != nil {
+		return "", err
+	}
+	_, project, err := api.AuthenticateAppCred(host, id, secret)
+	if err != nil {
+		return "", fmt.Errorf("couldn't get auth token, %v", err)
+	}
+	return project, nil
 }
 
 func doAuth(host, domain, project, username, password string) (string, error) {
