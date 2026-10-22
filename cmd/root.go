@@ -98,7 +98,16 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 		var err error
 		tok, err = api.LoadTokenStruct(host)
 		if err != nil {
-			if err.Error() == "token for "+host+" is expired" {
+			if err.Error() == "token for "+host+" is expired" && hasAppCred() {
+				if _, err = doAppCredAuth(host, ""); err != nil {
+					return fmt.Errorf("automatic reauth failed: %v", err)
+				}
+				tok, err = api.LoadTokenStruct(host)
+				if err != nil {
+					return fmt.Errorf("failed to load token after reauth: %v", err)
+				}
+				fmt.Printf("Token expired; reauth successful for host '%s'\n", host)
+			} else if err.Error() == "token for "+host+" is expired" {
 				// Try to reauth using saved credentials
 				user := viper.GetString("username")
 				pass := viper.GetString("password")
