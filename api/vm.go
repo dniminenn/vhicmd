@@ -593,16 +593,16 @@ func GetVMBootVolume(computeURL, token, vmID string) (string, error) {
 	return vmDetails.OSExtendedVolumesVolumesAttached[0].ID, nil
 }
 
-// RebuildVM rebuilds a VM from an image and waits until it is ACTIVE again.
-// Compute microversion 2.93 also re-images a boot volume; ports and addresses stay.
-func RebuildVM(computeURL, token, vmID, imageID string, timeout time.Duration) error {
+// RebuildVM rebuilds a VM from an image and waits until it is ACTIVE again; ports and addresses stay.
+// A boot volume is re-imaged only from compute microversion 2.93.
+func RebuildVM(computeURL, token, vmID, imageID, microversion string, timeout time.Duration) error {
 	payload := map[string]any{"rebuild": map[string]any{"imageRef": imageID}}
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("error marshaling rebuild payload: %v", err)
 	}
 	url := fmt.Sprintf("%s/servers/%s/action", computeURL, vmID)
-	resp, err := httpclient.SendRequestWithTokenVersion("POST", url, token, bytes.NewBuffer(jsonData), "2.93")
+	resp, err := httpclient.SendRequestWithTokenVersion("POST", url, token, bytes.NewBuffer(jsonData), microversion)
 	if err != nil {
 		return fmt.Errorf("failed to send rebuild request: %v", err)
 	}
@@ -631,4 +631,58 @@ func RebuildVM(computeURL, token, vmID, imageID string, timeout time.Duration) e
 		}
 	}
 	return fmt.Errorf("timeout waiting for the rebuild to finish")
+}
+
+// ComputeVersionRoot strips a project suffix from a compute endpoint (.../v2.1/<project> to .../v2.1).
+func ComputeVersionRoot(computeURL string) string {
+	u := strings.TrimRight(computeURL, "/")
+	if i := strings.LastIndex(u, "/v2.1"); i >= 0 {
+		return u[:i+len("/v2.1")]
+	}
+	return u
+}
+
+// ComputeMaxMicroversion returns the highest compute microversion the endpoint accepts.
+func ComputeMaxMicroversion(computeURL, token string) (string, error) {
+	apiResp, err := callGET(ComputeVersionRoot(computeURL)+"/", token)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch the compute version document: %v", err)
+	}
+	if apiResp.ResponseCode != 200 {
+		return "", fmt.Errorf("compute version request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	}
+	var doc struct {
+		Version struct {
+			Version string `json:"version"`
+		} `json:"version"`
+	}
+	if err := json.Unmarshal([]byte(apiResp.Response), &doc); err != nil {
+		return "", fmt.Errorf("failed to parse the compute version document: %v", err)
+	}
+	if doc.Version.Version == "" {
+		return "", fmt.Errorf("the compute version document has no maximum microversion")
+	}
+	return doc.Version.Version, nil
+}
+
+// WaitForVMGone waits until GET /servers/{id} answers 404.
+func WaitForVMGone(computeURL, token, vmID string, timeout time.Duration) error {
+	url := fmt.Sprintf("%s/servers/%s", computeURL, vmID)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		apiResp, err := callGET(url, token)
+		if err == nil {
+			if apiResp.ResponseCode == 404 {
+				return nil
+			}
+			var wrapper struct {
+				Server VMDetail `json:"server"`
+			}
+			if json.Unmarshal([]byte(apiResp.Response), &wrapper) == nil && wrapper.Server.Status == "ERROR" {
+				return fmt.Errorf("VM %s entered error state while deleting", vmID)
+			}
+		}
+		time.Sleep(5 * time.Second)
+	}
+	return fmt.Errorf("timeout waiting for VM %s to be deleted", vmID)
 }

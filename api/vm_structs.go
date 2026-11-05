@@ -65,10 +65,11 @@ type VMDetail struct {
 	Status string `json:"status"`
 	//	TenantID   string     `json:"tenant_id"`
 	//	Host       string     `json:"host,omitempty"`
-	PowerState int    `json:"OS-EXT-STS:power_state"`
-	TaskState  string `json:"OS-EXT-STS:task_state"`
-	Created    string `json:"created"`
-	Updated    string `json:"updated,omitempty"`
+	PowerState       int    `json:"OS-EXT-STS:power_state"`
+	TaskState        string `json:"OS-EXT-STS:task_state"`
+	AvailabilityZone string `json:"OS-EXT-AZ:availability_zone"`
+	Created          string `json:"created"`
+	Updated          string `json:"updated,omitempty"`
 	//	Progress   int        `json:"progress,omitempty"`
 	//	VMState    string     `json:"OS-EXT-STS:vm_state"`
 	Image  ImageField `json:"image"`
