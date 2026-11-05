@@ -1,10 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
+
+	"github.com/jessegalley/vhicmd/internal/httpclient"
 )
 
 // UpdateVM updates basic VM properties like name and description
@@ -587,4 +591,44 @@ func GetVMBootVolume(computeURL, token, vmID string) (string, error) {
 
 	// Return the first volume ID (most likely the boot volume)
 	return vmDetails.OSExtendedVolumesVolumesAttached[0].ID, nil
+}
+
+// RebuildVM rebuilds a VM from an image and waits until it is ACTIVE again.
+// Compute microversion 2.93 also re-images a boot volume; ports and addresses stay.
+func RebuildVM(computeURL, token, vmID, imageID string, timeout time.Duration) error {
+	payload := map[string]any{"rebuild": map[string]any{"imageRef": imageID}}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("error marshaling rebuild payload: %v", err)
+	}
+	url := fmt.Sprintf("%s/servers/%s/action", computeURL, vmID)
+	resp, err := httpclient.SendRequestWithTokenVersion("POST", url, token, bytes.NewBuffer(jsonData), "2.93")
+	if err != nil {
+		return fmt.Errorf("failed to send rebuild request: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 202 {
+		return fmt.Errorf("rebuild request failed (%d): %s", resp.StatusCode, FormatErrorResponse(string(body)))
+	}
+	deadline := time.Now().Add(timeout)
+	sawRebuild := false
+	for time.Now().Before(deadline) {
+		time.Sleep(10 * time.Second)
+		vm, err := GetVMDetails(computeURL, token, vmID)
+		if err != nil {
+			continue
+		}
+		switch vm.Status {
+		case "ERROR":
+			return fmt.Errorf("VM entered error state during rebuild")
+		case "REBUILD":
+			sawRebuild = true
+		case "ACTIVE":
+			if sawRebuild {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("timeout waiting for the rebuild to finish")
 }
