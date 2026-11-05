@@ -69,6 +69,11 @@ func SendRequest(url string, jsonData []byte) (*http.Response, error) {
 
 // SendRequestWithToken can handle both GET and POST requests with a timeout and a custom User-Agent.
 func SendRequestWithToken(method, url, token string, body io.Reader) (*http.Response, error) {
+	return SendRequestWithTokenVersion(method, url, token, body, "2.72")
+}
+
+// SendRequestWithTokenVersion is SendRequestWithToken with a chosen compute microversion.
+func SendRequestWithTokenVersion(method, url, token string, body io.Reader, novaVersion string) (*http.Response, error) {
 	// Read and reassign the body for logging if it's not nil
 	var bodyBytes []byte
 	if body != nil && viper.GetBool("debug") {
@@ -92,7 +97,7 @@ func SendRequestWithToken(method, url, token string, body io.Reader) (*http.Resp
 	}
 
 	// We need this header set for BlockDeviceMappingV2.VolumeType
-	req.Header.Set("X-OpenStack-Nova-API-Version", "2.72")
+	req.Header.Set("X-OpenStack-Nova-API-Version", novaVersion)
 
 	if viper.GetBool("debug") {
 		printDebugDivider("request")
