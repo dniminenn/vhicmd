@@ -433,6 +433,33 @@ func RebootVM(computeURL, token, vmID string, rebootType string) error {
 	}
 }
 
+// GetConsoleOutput returns the last lines of a VM's console log, or all of it when lines is 0.
+func GetConsoleOutput(computeURL, token, vmID string, lines int) (string, error) {
+	url := fmt.Sprintf("%s/servers/%s/action", computeURL, vmID)
+
+	opts := map[string]int{}
+	if lines > 0 {
+		opts["length"] = lines
+	}
+	request := map[string]map[string]int{"os-getConsoleOutput": opts}
+
+	resp, err := callPOST(url, token, request)
+	if err != nil {
+		return "", fmt.Errorf("failed to request console output: %v", err)
+	}
+	if resp.ResponseCode != 200 {
+		return "", fmt.Errorf("console output request failed: %s", resp.Response)
+	}
+
+	var result struct {
+		Output string `json:"output"`
+	}
+	if err := json.Unmarshal([]byte(resp.Response), &result); err != nil {
+		return "", fmt.Errorf("failed to parse console output: %v", err)
+	}
+	return result.Output, nil
+}
+
 // PauseVM sends a request to pause a VM
 func PauseVM(computeURL, token, vmID string) error {
 	url := fmt.Sprintf("%s/servers/%s/action", computeURL, vmID)

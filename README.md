@@ -13,6 +13,7 @@ Available Commands (aliases):
   catalog (cat)                       Fetch and display the OpenStack service catalog
   completion                          Generate the autocompletion script for the specified shell
   config (cfg | conf)                 Manage vhicmd configuration
+  console (console-log)               Print a VM's console log
   create (new)                        Create resources like VMs or volumes
   delete (rm | del)                   Delete resources
   details (show)                      Show details of resources
@@ -107,8 +108,8 @@ Configuration Options:
 - `image_id`: Default image for VM creation (optional)
 - `app_cred_id`, `app_cred_secret`: Application credential (API key), replaces username/password
 - `app_cred_file`: Path to a yaml file with `id` and `secret`, alternative to the two keys above
-
 - `timeout`: Per-request timeout in seconds (optional, default 120)
+
 Application credential configuration:
 ```yaml
 host: panel-vhi1.yourhost.com
@@ -195,6 +196,12 @@ vhicmd pause <vm-id>            # Pause VM
 vhicmd unpause <vm-id>          # Unpause VM
 vhicmd reboot soft <vm-id>      # Soft reboot (asks first)
 vhicmd reboot hard <vm-id>      # Hard reboot (asks first)
+```
+
+Read a VM's console log:
+```bash
+vhicmd console <vm-id>          # Whole console log
+vhicmd console <vm-id> -n 100   # Last 100 lines
 ```
 
 View usage information:
@@ -437,6 +444,7 @@ The migration process supports:
 - `-H, --host`: Override the VHI host
 - `--config`: Specify alternate config file
 - `--debug`: Enable debug mode
+- `--timeout`: Per-request timeout in seconds (default 120)
 - `--json`: Output in JSON format (available for list/details commands)
 
 ## Notes
@@ -444,7 +452,6 @@ The migration process supports:
 - Most commands accept either resource IDs or names
 - `vhicmd` supports networks with IPAM disabled which allows manually specifying MAC addresses as a normal user when creating a port
 - When using templates, all variables in the template must be provided in the ci-data parameter
-- `--timeout`: Per-request timeout in seconds (default 120)
 - Template validation strictly enforces that all variables are accounted for
 
 
