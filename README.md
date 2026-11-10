@@ -448,7 +448,7 @@ The migration process supports:
 
 - `-H, --host`: Override the VHI host
 - `--config`: Specify alternate config file
-- `--debug`: Enable debug mode
+- `--debug`: Enable debug mode (tokens, passwords and secrets are masked in the output)
 - `--timeout`: Per-request timeout in seconds (default 120)
 - `--json`: Output in JSON format (available for list/details commands)
 
