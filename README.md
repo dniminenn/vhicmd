@@ -408,6 +408,11 @@ vhicmd create image --file <path> \
   [--json]
 ```
 
+Create image from a VM's boot volume:
+```bash
+vhicmd create image --instance <vm-id|name> [--name <name>] [--wait 1h]   # Waits up to 30m by default
+```
+
 `--sha256` checks the file before upload and then checks the upload against the Glance checksum. `--json` prints the new image as JSON on stdout; progress goes to stderr.
 
 Delete image:
