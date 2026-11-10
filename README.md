@@ -25,6 +25,7 @@ Available Commands (aliases):
   netboot                             Configure netboot settings
   pause                               Pause a VM
   reboot                              Reboot a virtual machine
+  rebuild                             Rebuild a VM from an image (its disk is replaced, its addresses stay)
   shelve                              Shelve a VM
   start                               Power on a VM
   stop                                Shut down a VM
@@ -196,9 +197,9 @@ vhicmd details security-group <sg-id|name>   # Shows its rules
 
 Download resources:
 ```bash
-vhicmd download image <image-id> [--output path]
-vhicmd download volume <volume-id> [--output path]
-vhicmd download volume <volume-id> <path> --wait 1h   # Wait longer than the default 30m for the temporary image
+vhicmd download image <image-id|name> <output-path>
+vhicmd download volume <volume-id|name> <output-path>
+vhicmd download volume <volume-id|name> <output-path> --wait 1h   # Wait longer than the default 30m for the temporary image
 ```
 
 Manage VM state:
