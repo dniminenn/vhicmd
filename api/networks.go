@@ -129,15 +129,15 @@ func AttachNetworkToVM(networkURL, computeURL, token, vmID, networkID, portID st
 }
 
 // DetachNetworkFromVM detaches a network interface from a VM.
-func DetachNetworkFromVM(networkURL, token, vmID, portID string) error {
-	url := fmt.Sprintf("%s/servers/%s/os-interface/%s", networkURL, vmID, portID)
+func DetachNetworkFromVM(computeURL, token, vmID, portID string) error {
+	url := fmt.Sprintf("%s/servers/%s/os-interface/%s", computeURL, vmID, portID)
 
 	apiResp, err := callDELETE(url, token)
 	if err != nil {
 		return fmt.Errorf("failed to detach network: %v", err)
 	}
 
-	if apiResp.ResponseCode != 200 {
+	if apiResp.ResponseCode != 202 && apiResp.ResponseCode != 200 {
 		return fmt.Errorf("detach network request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
 	}
 
