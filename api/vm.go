@@ -377,25 +377,16 @@ func StopVM(computeURL, token, vmID string) error {
 	}
 
 	// Poll until shutdown complete or error
-	maxAttempts := 30 // 5 minutes total (10 second intervals)
-	attempts := 0
-	for {
-		if attempts >= maxAttempts {
-			return fmt.Errorf("timeout waiting for VM to stop")
-		}
+	return waitFor("timeout waiting for VM to stop", func() (bool, error) {
 		vmDetails, err := GetVMDetails(computeURL, token, vmID)
 		if err != nil {
-			return fmt.Errorf("failed to get VM details while stopping: %v", err)
+			return false, fmt.Errorf("failed to get VM details while stopping: %v", err)
 		}
 		if vmDetails.Status == "ERROR" {
-			return fmt.Errorf("VM entered error state while stopping")
+			return false, fmt.Errorf("VM entered error state while stopping")
 		}
-		if vmDetails.Status == "SHUTOFF" {
-			return nil
-		}
-		time.Sleep(10 * time.Second)
-		attempts++
-	}
+		return vmDetails.Status == "SHUTOFF", nil
+	})
 }
 
 // RebootVM sends a request to perform a reboot (HARD or SOFT) on a VM.
@@ -421,25 +412,16 @@ func RebootVM(computeURL, token, vmID string, rebootType string) error {
 	}
 
 	// Poll until the VM becomes ACTIVE or timeout
-	maxAttempts := 30
-	attempts := 0
-	for {
-		if attempts >= maxAttempts {
-			return fmt.Errorf("timeout waiting for VM to reboot")
-		}
+	return waitFor("timeout waiting for VM to reboot", func() (bool, error) {
 		vmDetails, err := GetVMDetails(computeURL, token, vmID)
 		if err != nil {
-			return fmt.Errorf("failed to fetch VM details during reboot: %v", err)
+			return false, fmt.Errorf("failed to fetch VM details during reboot: %v", err)
 		}
 		if vmDetails.Status == "ERROR" {
-			return fmt.Errorf("VM entered error state during reboot")
+			return false, fmt.Errorf("VM entered error state during reboot")
 		}
-		if vmDetails.Status == "ACTIVE" {
-			return nil
-		}
-		time.Sleep(10 * time.Second)
-		attempts++
-	}
+		return vmDetails.Status == "ACTIVE", nil
+	})
 }
 
 // GetConsoleOutput returns the last lines of a VM's console log, or all of it when lines is 0.
@@ -564,21 +546,22 @@ func UnpauseVM(computeURL, token, vmID string) error {
 
 // WaitForStatus waits for a VM to reach a given status or returns error on timeout/error
 func WaitForStatus(computeURL, token, vmID string, targetStatus string) (VMDetail, error) {
-	maxAttempts := 30
-	for attempts := 0; attempts < maxAttempts; attempts++ {
-		vmDetails, err := GetVMDetails(computeURL, token, vmID)
+	var vmDetails VMDetail
+	err := waitFor(fmt.Sprintf("timeout waiting for VM to reach status %q", targetStatus), func() (bool, error) {
+		var err error
+		vmDetails, err = GetVMDetails(computeURL, token, vmID)
 		if err != nil {
-			return VMDetail{}, fmt.Errorf("failed to get VM details: %v", err)
+			return false, fmt.Errorf("failed to get VM details: %v", err)
 		}
 		if strings.EqualFold(vmDetails.Status, "ERROR") {
-			return VMDetail{}, fmt.Errorf("VM creation failed: status ERROR")
+			return false, fmt.Errorf("VM creation failed: status ERROR")
 		}
-		if strings.EqualFold(vmDetails.Status, targetStatus) {
-			return vmDetails, nil
-		}
-		time.Sleep(10 * time.Second)
+		return strings.EqualFold(vmDetails.Status, targetStatus), nil
+	})
+	if err != nil {
+		return VMDetail{}, err
 	}
-	return VMDetail{}, fmt.Errorf("timeout waiting for VM to reach status %q", targetStatus)
+	return vmDetails, nil
 }
 
 // DeleteVM sends a request to delete a VM.

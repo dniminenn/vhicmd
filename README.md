@@ -505,6 +505,7 @@ The migration process supports:
 ## Notes
 
 - Most commands accept either resource IDs or names
+- Waits for a VM or volume to change state (create, reboot, migrate) give up after 30 minutes
 - A name must match exactly one resource; name lookups and lists follow pagination unless `--limit` or `--marker` is given, so large projects are read completely
 - `vhicmd` supports networks with IPAM disabled which allows manually specifying MAC addresses as a normal user when creating a port
 - When using templates, all variables in the template must be provided in the ci-data parameter
