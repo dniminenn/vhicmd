@@ -206,3 +206,34 @@ func TestListWithLimitIsOnePage(t *testing.T) {
 		t.Errorf("flavors = %d after %d requests, want one page", len(resp.Flavors), len(*requests))
 	}
 }
+
+func TestListVMsDetailAndPortsFollowPages(t *testing.T) {
+	srv, requests := pagedServer(t, "/servers/detail", "servers", lookupItems, nil)
+	vms, err := ListVMsDetail(srv.URL, "tok", map[string]string{"status": "ACTIVE"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vms.Servers) != len(lookupItems) || len(*requests) != 4 || (*requests)[1] != "marker=id-2&status=ACTIVE" {
+		t.Errorf("servers = %d, requests = %q", len(vms.Servers), *requests)
+	}
+
+	srv, requests = pagedServer(t, "/v2.0/ports", "ports", lookupItems, nil)
+	ports, err := ListPorts(srv.URL, "tok", map[string]string{"mac_address": "fa:16:3e:00:00:01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ports.Ports) != len(lookupItems) || len(*requests) != 4 || (*requests)[0] != "mac_address=fa%3A16%3A3e%3A00%3A00%3A01" {
+		t.Errorf("ports = %d, requests = %q", len(ports.Ports), *requests)
+	}
+}
+
+func TestListWithMarkerIsOnePage(t *testing.T) {
+	srv, requests := pagedServer(t, "/servers/detail", "servers", lookupItems, nil)
+	vms, err := ListVMsDetail(srv.URL, "tok", map[string]string{"marker": "id-2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vms.Servers) != 2 || vms.Servers[0].ID != "id-3" || len(*requests) != 1 {
+		t.Errorf("servers = %+v after %d requests, want the one page after the marker", vms.Servers, len(*requests))
+	}
+}

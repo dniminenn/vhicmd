@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // AllowedAddressPair represents an allowed address pair on a port.
@@ -132,33 +131,22 @@ func UpdatePort(baseURL, token, portID string, fields PortUpdateFields) (Port, e
 	return wrapper.Port, nil
 }
 
-// ListPorts fetches list of ports with optional query parameters
+// ListPorts fetches the ports matching the optional query parameters, every page.
 func ListPorts(baseURL, token string, queryParams map[string]string) (PortListResponse, error) {
-	var result PortListResponse
+	result := PortListResponse{Ports: []Port{}}
 
-	url := fmt.Sprintf("%s/v2.0/ports", baseURL)
-	if len(queryParams) > 0 {
-		url += "?"
-		for key, value := range queryParams {
-			url += fmt.Sprintf("%s=%s&", key, value)
+	listURL := fmt.Sprintf("%s/v2.0/ports", baseURL)
+	err := listPages(listURL, token, queryParams, "ports_links", func(body []byte) error {
+		var page PortListResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return fmt.Errorf("failed to parse list ports response: %v", err)
 		}
-		url = strings.TrimSuffix(url, "&") // Remove trailing &
-	}
-
-	apiResp, err := callGET(url, token)
+		result.Ports = append(result.Ports, page.Ports...)
+		return nil
+	})
 	if err != nil {
 		return result, fmt.Errorf("failed to list ports: %v", err)
 	}
-
-	if apiResp.ResponseCode != 200 {
-		return result, fmt.Errorf("list ports request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
-	}
-
-	err = json.Unmarshal([]byte(apiResp.Response), &result)
-	if err != nil {
-		return result, fmt.Errorf("failed to parse list ports response: %v", err)
-	}
-
 	return result, nil
 }
 

@@ -39,7 +39,7 @@ type FlavorListResponse struct {
 	Flavors []Flavor `json:"flavors"`
 }
 
-// ListFlavors fetches the list of flavors from the stored compute URL, every page unless a limit is set.
+// ListFlavors fetches the list of flavors from the stored compute URL, every page unless a limit or marker is set.
 func ListFlavors(computeURL, token string, queryParams map[string]string) (FlavorListResponse, error) {
 	result := FlavorListResponse{Flavors: []Flavor{}}
 
