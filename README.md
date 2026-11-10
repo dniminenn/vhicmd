@@ -175,6 +175,7 @@ vhicmd list snapshots [--volume <volume-id|name>]
 vhicmd list networks [--name filter]
 vhicmd list ports [--status DOWN] [--name filter] [--mac-address addr]  # Shows all ports by default
 vhicmd list security-groups
+vhicmd list floating-ips
 vhicmd list flavors
 vhicmd list images [--name filter] [--visibility public|private|shared]
 vhicmd list image-members <image>
@@ -439,6 +440,14 @@ Update port:
 vhicmd update port <port-id|name> --allowed-address-pairs <ip1>,<ip2>
 vhicmd update port <port-id|name> --port-security=false           # Also removes its security groups
 vhicmd update port <port-id|name> --security-groups <sg1>,<sg2>   # IDs or names; replaces the port's groups
+```
+
+Floating IPs:
+```bash
+vhicmd create floating-ip --network <external-network-id|name>
+vhicmd update floating-ip <fip-id|address> --port <port-id|name>   # Associate with a port
+vhicmd update floating-ip <fip-id|address> --detach                # Disassociate
+vhicmd delete floating-ip <fip-id|address>
 ```
 
 Security groups:
