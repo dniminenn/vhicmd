@@ -42,7 +42,7 @@ func (r *recordedRequest) check(t *testing.T, method, path, body string) {
 	}
 }
 
-func TestStartAndStopVM(t *testing.T) {
+func TestPowerActions(t *testing.T) {
 	cases := []struct {
 		name string
 		call func(computeURL, token, vmID string) error
@@ -50,6 +50,8 @@ func TestStartAndStopVM(t *testing.T) {
 	}{
 		{"start", StartVM, `{"os-start":null}`},
 		{"stop", RequestStopVM, `{"os-stop":{}}`},
+		{"shelve", ShelveVM, `{"shelve":null}`},
+		{"unshelve", UnshelveVM, `{"unshelve":null}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

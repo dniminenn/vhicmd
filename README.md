@@ -25,10 +25,12 @@ Available Commands (aliases):
   netboot                             Configure netboot settings
   pause                               Pause a VM
   reboot                              Reboot a virtual machine
+  shelve                              Shelve a VM
   start                               Power on a VM
   stop                                Shut down a VM
   switch-project (sw)                 Switch to a different project using saved credentials
   unpause                             Unpause a VM
+  unshelve                            Unshelve a VM
   update (set)                        Update resource attributes
   usage                               Show resource usage statistics
   validate                            Validate and preview a template with provided variables
@@ -202,6 +204,8 @@ vhicmd start <vm-id>            # Power on VM
 vhicmd stop <vm-id>             # Shut down VM (asks first, -y to skip)
 vhicmd pause <vm-id>            # Pause VM
 vhicmd unpause <vm-id>          # Unpause VM
+vhicmd shelve <vm-id>           # Shelve VM: shut down and release its host (asks first, -y to skip)
+vhicmd unshelve <vm-id>         # Bring a shelved VM back
 vhicmd reboot soft <vm-id>      # Soft reboot (asks first)
 vhicmd reboot hard <vm-id>      # Hard reboot (asks first)
 ```
