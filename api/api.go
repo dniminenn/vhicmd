@@ -169,7 +169,7 @@ func callPUT(url, token string, body interface{}) (ApiResponse, error) {
 }
 
 // listPages GETs a list endpoint with the query and calls page with each body.
-// It follows every page, unless the caller set a limit: then it is that one page.
+// It follows every page, unless the caller set a limit or a marker: then it is that one page.
 func listPages(listURL, token string, queryParams map[string]string, linksKey string, page func(body []byte) error) error {
 	query := url.Values{}
 	for key, value := range queryParams {
@@ -178,7 +178,7 @@ func listPages(listURL, token string, queryParams map[string]string, linksKey st
 	if len(query) > 0 {
 		listURL += "?" + query.Encode()
 	}
-	if query.Has("limit") {
+	if query.Has("limit") || query.Has("marker") {
 		linksKey = ""
 	}
 	return listAllPages(listURL, token, linksKey, page)

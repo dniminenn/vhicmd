@@ -84,7 +84,7 @@ func GetVolumeIDByName(storageURL, token, volumeName string) (string, error) {
 	return foundVolumes[0].ID, nil
 }
 
-// ListVolumes fetches the list of volumes, every page unless a limit is set.
+// ListVolumes fetches the list of volumes, every page unless a limit or marker is set.
 func ListVolumes(storageURL, token string, queryParams map[string]string) (VolumeListResponse, error) {
 	result := VolumeListResponse{Volumes: []Volume{}}
 
