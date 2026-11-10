@@ -247,19 +247,77 @@ func printDebugDivider(title string) {
 	fmt.Printf("\n\033[1;36m=== %s ===\033[0m\n", strings.ToUpper(title))
 }
 
-// prettyPrintJSON formats JSON with indentation
-func prettyPrintJSON(data []byte) string {
-	var prettyJSON bytes.Buffer
-	err := json.Indent(&prettyJSON, data, "", "    ")
-	if err != nil {
-		return string(data) // Fallback to raw if not valid JSON
-	}
-	return prettyJSON.String()
+const redacted = "***REDACTED***"
+
+// secretHeaders and secretBodyKeys are never shown in debug output.
+var secretHeaders = map[string]bool{
+	"X-Auth-Token":    true,
+	"X-Subject-Token": true,
 }
 
-// printHeaders pretty prints HTTP headers
+var secretBodyKeys = map[string]bool{
+	"password":  true,
+	"secret":    true,
+	"adminpass": true,
+	"auth_key":  true,
+}
+
+// redactJSON masks credential values in place: secret keys holding a scalar, and the id of a "token" object.
+func redactJSON(v any) {
+	switch node := v.(type) {
+	case map[string]any:
+		for key, value := range node {
+			switch child := value.(type) {
+			case map[string]any:
+				if strings.EqualFold(key, "token") {
+					if _, ok := child["id"]; ok {
+						child["id"] = redacted
+					}
+				}
+				redactJSON(child)
+			case []any:
+				redactJSON(child)
+			case nil:
+			default:
+				if secretBodyKeys[strings.ToLower(key)] {
+					node[key] = redacted
+				}
+			}
+		}
+	case []any:
+		for _, item := range node {
+			redactJSON(item)
+		}
+	}
+}
+
+// prettyPrintJSON formats JSON with indentation and masks credentials for debug output
+func prettyPrintJSON(data []byte) string {
+	var parsed any
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if err := dec.Decode(&parsed); err != nil {
+		return string(data) // Fallback to raw if not valid JSON
+	}
+	redactJSON(parsed)
+
+	var prettyJSON bytes.Buffer
+	enc := json.NewEncoder(&prettyJSON)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "    ")
+	if err := enc.Encode(parsed); err != nil {
+		return string(data)
+	}
+	return strings.TrimRight(prettyJSON.String(), "\n")
+}
+
+// printHeaders pretty prints HTTP headers, masking token headers
 func printHeaders(headers http.Header) {
 	for key, values := range headers {
-		fmt.Printf("    \033[1;33m%s\033[0m: %s\n", key, strings.Join(values, ", "))
+		value := strings.Join(values, ", ")
+		if secretHeaders[http.CanonicalHeaderKey(key)] {
+			value = redacted
+		}
+		fmt.Printf("    \033[1;33m%s\033[0m: %s\n", key, value)
 	}
 }
