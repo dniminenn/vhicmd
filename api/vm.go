@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -182,30 +183,21 @@ func RevertResize(computeURL, token, vmID string) error {
 	return nil
 }
 
-// ListVMs fetches the list of virtual machines.
+// ListVMs fetches the list of virtual machines, every page unless a limit is set.
 func ListVMs(computeURL, token string, queryParams map[string]string) (VMListResponse, error) {
-	var result VMListResponse
+	result := VMListResponse{Servers: []VM{}}
 
-	baseURL := fmt.Sprintf("%s/servers", computeURL)
-	if len(queryParams) > 0 {
-		baseURL += "?"
-		for key, value := range queryParams {
-			baseURL += fmt.Sprintf("%s=%s&", key, value)
+	listURL := fmt.Sprintf("%s/servers", computeURL)
+	err := listPages(listURL, token, queryParams, "servers_links", func(body []byte) error {
+		var page VMListResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return fmt.Errorf("failed to parse VM list response: %v", err)
 		}
-		baseURL = strings.TrimSuffix(baseURL, "&")
-	}
-
-	apiResp, err := callGET(baseURL, token)
+		result.Servers = append(result.Servers, page.Servers...)
+		return nil
+	})
 	if err != nil {
 		return result, fmt.Errorf("failed to fetch VMs: %v", err)
-	}
-	if apiResp.ResponseCode != 200 {
-		return result, fmt.Errorf("VM list request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
-	}
-
-	err = json.Unmarshal([]byte(apiResp.Response), &result)
-	if err != nil {
-		return result, fmt.Errorf("failed to parse VM list response: %v", err)
 	}
 	return result, nil
 }
@@ -585,17 +577,26 @@ func GetVMIDByName(computeURL, token, vmName string) (string, error) {
 		return vmName, nil
 	}
 
-	vms, err := ListVMs(computeURL, token, nil)
-	if err != nil {
-		return "", err
+	exact := func(vms VMListResponse) []VM {
+		var found []VM
+		for _, vm := range vms.Servers {
+			if vm.Name == vmName {
+				found = append(found, vm)
+			}
+		}
+		return found
 	}
 
-	var foundVMs []VM
-
-	for _, vm := range vms.Servers {
-		if vm.Name == vmName {
-			foundVMs = append(foundVMs, vm)
+	// nova matches the name filter as a regex, so it is escaped and anchored.
+	vms, err := ListVMs(computeURL, token, map[string]string{"name": "^" + regexp.QuoteMeta(vmName) + "$"})
+	foundVMs := exact(vms)
+	if err != nil || len(foundVMs) == 0 {
+		// A backend that reads the filter differently must not hide a VM: go through the whole list.
+		vms, err = ListVMs(computeURL, token, nil)
+		if err != nil {
+			return "", err
 		}
+		foundVMs = exact(vms)
 	}
 
 	if len(foundVMs) == 0 {

@@ -464,6 +464,7 @@ The migration process supports:
 ## Notes
 
 - Most commands accept either resource IDs or names
+- A name must match exactly one resource; name lookups follow pagination, so large projects are searched completely
 - `vhicmd` supports networks with IPAM disabled which allows manually specifying MAC addresses as a normal user when creating a port
 - When using templates, all variables in the template must be provided in the ci-data parameter
 - Template validation strictly enforces that all variables are accounted for

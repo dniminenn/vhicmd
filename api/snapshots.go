@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 )
 
 // Snapshot represents a cinder volume snapshot.
@@ -42,16 +41,8 @@ func ListSnapshots(storageURL, token string, queryParams map[string]string) (Sna
 	var result SnapshotListResponse
 	result.Snapshots = []Snapshot{}
 
-	query := url.Values{}
-	for key, value := range queryParams {
-		query.Set(key, value)
-	}
 	listURL := fmt.Sprintf("%s/snapshots/detail", storageURL)
-	if len(query) > 0 {
-		listURL += "?" + query.Encode()
-	}
-
-	err := listAllPages(listURL, token, "snapshots_links", func(body []byte) error {
+	err := listPages(listURL, token, queryParams, "snapshots_links", func(body []byte) error {
 		var page SnapshotListResponse
 		if err := json.Unmarshal(body, &page); err != nil {
 			return fmt.Errorf("failed to parse snapshots response: %v", err)
