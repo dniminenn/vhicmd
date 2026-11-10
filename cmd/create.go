@@ -42,6 +42,9 @@ var createImageCmd = &cobra.Command{
 			os.Stdout = os.Stderr
 			defer func() { os.Stdout = imageOut }()
 		}
+		if flagImageWait <= 0 {
+			return fmt.Errorf("--wait must be a positive duration, for example 30m")
+		}
 		if flagImageSHA256 != "" && flagImageFile == "" {
 			return fmt.Errorf("--sha256 applies only to --file uploads")
 		}
@@ -98,59 +101,14 @@ var createImageCmd = &cobra.Command{
 				return fmt.Errorf("failed to get a valid image ID from volume upload")
 			}
 
-			fmt.Printf("Waiting for image (ID: %s) to become active...\n", imageID)
-
-			// Monitor image status until it's active
-			maxAttempts := 60 // 5 minutes with 5 second intervals
-			var lastStatus string
-			active := false
-			for attempt := 0; attempt < maxAttempts; attempt++ {
-				// List all images and find the one with our ID
-				images, err := api.ListImages(imageURL, tok.Value, map[string]string{"id": imageID})
-				if err != nil {
-					fmt.Printf("Warning: Error checking image status: %v (retrying...)\n", err)
-					time.Sleep(5 * time.Second)
-					continue
-				}
-
-				var found bool
-				var status string
-
-				for _, img := range images.Images {
-					if img.ID == imageID {
-						found = true
-						status = img.Status
-						break
-					}
-				}
-
-				if !found {
-					if lastStatus != "not_found" {
-						fmt.Printf("Image not found yet, waiting...\n")
-						lastStatus = "not_found"
-					}
-					time.Sleep(5 * time.Second)
-					continue
-				}
-
-				if status != lastStatus {
-					fmt.Printf("Image status: %s\n", status)
-					lastStatus = status
-				}
-
-				if status == "active" {
-					fmt.Printf("Image is now active\n")
-					active = true
-					break
-				} else if status == "error" {
-					return fmt.Errorf("image creation failed with status: error")
-				}
-
-				time.Sleep(5 * time.Second)
+			fmt.Printf("Waiting for image (ID: %s) to become active (up to %s)...\n", imageID, flagImageWait)
+			err = api.WaitForImageActive(imageURL, tok.Value, imageID, flagImageWait, 5*time.Second, func(msg string) {
+				fmt.Println(msg)
+			})
+			if err != nil {
+				return err
 			}
-			if !active {
-				return fmt.Errorf("timed out waiting for image %s to become active (last status: %s)", imageID, lastStatus)
-			}
+			fmt.Printf("Image is now active\n")
 
 			return printCreatedImage(imageURL, tok.Value, imageID, "")
 		}
@@ -472,6 +430,7 @@ var (
 	flagPortIP            string
 	flagPortAllowedPairs  string
 	flagInstanceID        string
+	flagImageWait         time.Duration
 )
 
 func init() {
@@ -514,6 +473,8 @@ func init() {
 	createImageCmd.Flags().StringVar(&flagDiskFormat, "format", "", "Disk format (qcow2, raw, vmdk, iso)")
 	createImageCmd.Flags().StringVar(&flagInstanceID, "instance", "", "VM instance ID or name to snapshot")
 	createImageCmd.Flags().StringVar(&flagImageSHA256, "sha256", "", "Expected sha256 of --file; verified before upload, and the upload is checked against the Glance checksum")
+
+	createImageCmd.Flags().DurationVar(&flagImageWait, "wait", 30*time.Minute, "With --instance: how long to wait for the image to become active")
 
 	// Flags for create port
 	createPortCmd.Flags().StringVar(&flagPortNetwork, "network", "", "Network ID or name")
