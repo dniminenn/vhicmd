@@ -352,19 +352,34 @@ func GetVMDetails(computeURL, token, vmID string) (VMDetail, error) {
 	return vm, nil
 }
 
-// StopVM sends a request to stop a VM and waits for it to be fully stopped
-func StopVM(computeURL, token, vmID string) error {
+// serverAction posts a server action that nova answers with 202.
+func serverAction(computeURL, token, vmID, label string, body any) error {
 	url := fmt.Sprintf("%s/servers/%s/action", computeURL, vmID)
 
-	// Send the stop request
-	request := ActionRequest{OsStop: &struct{}{}}
-
-	resp, err := callPOST(url, token, request)
+	resp, err := callPOST(url, token, body)
 	if err != nil {
-		return fmt.Errorf("failed to send stop request: %v", err)
+		return fmt.Errorf("failed to send %s request: %v", label, err)
 	}
 	if resp.ResponseCode != 202 {
-		return fmt.Errorf("stop request failed: %s", resp.Response)
+		return fmt.Errorf("%s request failed [%d]: %s", label, resp.ResponseCode, resp.Response)
+	}
+	return nil
+}
+
+// StartVM asks nova to power on a VM and returns without waiting.
+func StartVM(computeURL, token, vmID string) error {
+	return serverAction(computeURL, token, vmID, "start", map[string]any{"os-start": nil})
+}
+
+// RequestStopVM asks nova to shut a VM down and returns without waiting.
+func RequestStopVM(computeURL, token, vmID string) error {
+	return serverAction(computeURL, token, vmID, "stop", ActionRequest{OsStop: &struct{}{}})
+}
+
+// StopVM sends a request to stop a VM and waits for it to be fully stopped
+func StopVM(computeURL, token, vmID string) error {
+	if err := RequestStopVM(computeURL, token, vmID); err != nil {
+		return err
 	}
 
 	// Poll until shutdown complete or error

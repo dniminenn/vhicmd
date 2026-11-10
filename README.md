@@ -25,6 +25,8 @@ Available Commands (aliases):
   netboot                             Configure netboot settings
   pause                               Pause a VM
   reboot                              Reboot a virtual machine
+  start                               Power on a VM
+  stop                                Shut down a VM
   switch-project (sw)                 Switch to a different project using saved credentials
   unpause                             Unpause a VM
   update (set)                        Update resource attributes
@@ -193,6 +195,8 @@ vhicmd download volume <volume-id> <path> --wait 1h   # Wait longer than the def
 
 Manage VM state:
 ```bash
+vhicmd start <vm-id>            # Power on VM
+vhicmd stop <vm-id>             # Shut down VM (asks first, -y to skip)
 vhicmd pause <vm-id>            # Pause VM
 vhicmd unpause <vm-id>          # Unpause VM
 vhicmd reboot soft <vm-id>      # Soft reboot (asks first)
