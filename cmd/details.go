@@ -1,13 +1,17 @@
 package cmd
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/jessegalley/vhicmd/api"
 	"github.com/jessegalley/vhicmd/internal/responseparser"
 	"github.com/spf13/cobra"
 )
+
+var flagDetailsUserData bool
 
 var detailsCmd = &cobra.Command{
 	Use:     "details",
@@ -37,8 +41,28 @@ var vmDetailsCmd = &cobra.Command{
 			return err
 		}
 
+		// Ports are read from neutron; a VM is still shown when that fails.
+		var ports []api.Port
+		var portsErr error
+		if networkURL, err := validateTokenEndpoint(tok, "network"); err != nil {
+			portsErr = err
+		} else {
+			ports, portsErr = api.ListVMPorts(networkURL, tok.Value, vm.ID)
+		}
+
+		userData := vm.UserData
+		if !flagDetailsUserData {
+			vm.UserData = ""
+		}
+
 		if flagJsonOutput {
-			b, _ := json.MarshalIndent(vm, "", "  ")
+			if ports == nil {
+				ports = []api.Port{}
+			}
+			b, _ := json.MarshalIndent(struct {
+				api.VMDetail
+				Ports []api.Port `json:"ports"`
+			}{vm, ports}, "", "  ")
 			fmt.Println(string(b))
 			return nil
 		}
@@ -142,8 +166,76 @@ var vmDetailsCmd = &cobra.Command{
 		}
 
 		responseparser.PrintVMDetailsTable([]responseparser.VMDetails{details})
+
+		fmt.Println("\nPorts:")
+		if portsErr != nil {
+			fmt.Printf("could not be read: %v\n", portsErr)
+		} else {
+			responseparser.PrintTable(
+				[]string{"Port ID", "MAC Address", "Fixed IPs", "Port Security", "Security Groups", "Allowed Address Pairs"},
+				vmPortRows(ports))
+		}
+
+		summary, decoded := describeUserData(userData, flagDetailsUserData)
+		fmt.Printf("\nUser Data: %s\n", summary)
+		if decoded != "" {
+			fmt.Print(decoded)
+			if !strings.HasSuffix(decoded, "\n") {
+				fmt.Println()
+			}
+		}
 		return nil
 	},
+}
+
+// vmPortRows renders one table row per port of a VM.
+func vmPortRows(ports []api.Port) [][]string {
+	var rows [][]string
+	for _, p := range ports {
+		var ips, pairs []string
+		for _, ip := range p.FixedIPs {
+			ips = append(ips, ip.IPAddress)
+		}
+		for _, pair := range p.AllowedAddressPairs {
+			if pair.MACAddress != "" && pair.MACAddress != p.MACAddress {
+				pairs = append(pairs, fmt.Sprintf("%s (%s)", pair.IPAddress, pair.MACAddress))
+			} else {
+				pairs = append(pairs, pair.IPAddress)
+			}
+		}
+		portSecurity := "N/A"
+		if p.PortSecurityEnabled != nil {
+			portSecurity = responseparser.Bool(*p.PortSecurityEnabled)
+		}
+		rows = append(rows, []string{
+			p.ID,
+			p.MACAddress,
+			stringOrNone(strings.Join(ips, ", ")),
+			portSecurity,
+			stringOrNone(strings.Join(p.SecurityGroups, ", ")),
+			stringOrNone(strings.Join(pairs, ", ")),
+		})
+	}
+	return rows
+}
+
+// describeUserData returns the User Data line and, when show is set, the decoded text.
+// An empty value is not proof that the VM has none: the API hides the field from most users.
+func describeUserData(encoded string, show bool) (summary, decoded string) {
+	if encoded == "" {
+		return "not returned by the API", ""
+	}
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		if show {
+			return "present, not valid base64, shown as returned", encoded
+		}
+		return "present, not valid base64 (--user-data prints it as returned)", ""
+	}
+	if show {
+		return fmt.Sprintf("present, %d bytes", len(raw)), string(raw)
+	}
+	return fmt.Sprintf("present, %d bytes (--user-data prints it)", len(raw)), ""
 }
 
 var portDetailsCmd = &cobra.Command{
@@ -366,6 +458,7 @@ var volumeDetailsCmd = &cobra.Command{
 }
 
 func init() {
+	vmDetailsCmd.Flags().BoolVar(&flagDetailsUserData, "user-data", false, "Print the VM's user data, base64-decoded")
 	detailsCmd.AddCommand(vmDetailsCmd)
 	detailsCmd.AddCommand(portDetailsCmd)
 	detailsCmd.AddCommand(imageDetailsCmd)

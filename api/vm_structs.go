@@ -87,7 +87,9 @@ type VMDetail struct {
 	HCIInfo                          HCIInfo           `json:"hci_info"`
 	OSExtendedVolumesVolumesAttached []VmVolume        `json:"os-extended-volumes:volumes_attached"`
 	Metadata                         map[string]string `json:"metadata,omitempty"`
-	Addresses                        map[string][]struct {
+	// Base64 as stored; needs compute microversion 2.3 and is left out by the API for most non-admin users.
+	UserData  string `json:"OS-EXT-SRV-ATTR:user_data,omitempty"`
+	Addresses map[string][]struct {
 		Addr    string `json:"addr"`
 		Version int    `json:"version"`
 		Type    string `json:"OS-EXT-IPS:type"`
