@@ -467,6 +467,57 @@ func GetConsoleOutput(computeURL, token, vmID string, lines int) (string, error)
 	return result.Output, nil
 }
 
+// GetConsoleURL returns the noVNC console URL of a VM. It asks remote-consoles first and,
+// if that is rejected, the os-getVNCConsole action, which nova only accepts below microversion 2.6.
+func GetConsoleURL(computeURL, token, vmID string) (string, error) {
+	var remote struct {
+		RemoteConsole struct {
+			URL string `json:"url"`
+		} `json:"remote_console"`
+	}
+	request := map[string]map[string]string{"remote_console": {"protocol": "vnc", "type": "novnc"}}
+	resp, err := callPOST(fmt.Sprintf("%s/servers/%s/remote-consoles", computeURL, vmID), token, request)
+	if err == nil && resp.ResponseCode == 200 {
+		if err := json.Unmarshal([]byte(resp.Response), &remote); err != nil {
+			return "", fmt.Errorf("failed to parse console response: %v", err)
+		}
+		if remote.RemoteConsole.URL == "" {
+			return "", fmt.Errorf("console response has no URL")
+		}
+		return remote.RemoteConsole.URL, nil
+	}
+	firstErr := err
+	if firstErr == nil {
+		firstErr = fmt.Errorf("[%d] %s", resp.ResponseCode, resp.Response)
+	}
+
+	legacy, _ := json.Marshal(map[string]map[string]string{"os-getVNCConsole": {"type": "novnc"}})
+	url := fmt.Sprintf("%s/servers/%s/action", computeURL, vmID)
+	httpResp, err := httpclient.SendRequestWithTokenVersion("POST", url, token, bytes.NewBuffer(legacy), "2.1")
+	if err != nil {
+		return "", fmt.Errorf("console URL request failed: %v; legacy request failed: %v", firstErr, err)
+	}
+	defer httpResp.Body.Close()
+	body, _ := io.ReadAll(httpResp.Body)
+	if httpResp.StatusCode != 200 {
+		return "", fmt.Errorf("console URL request failed: %v; legacy request failed: [%d] %s",
+			firstErr, httpResp.StatusCode, FormatErrorResponse(string(body)))
+	}
+
+	var console struct {
+		Console struct {
+			URL string `json:"url"`
+		} `json:"console"`
+	}
+	if err := json.Unmarshal(body, &console); err != nil {
+		return "", fmt.Errorf("failed to parse console response: %v", err)
+	}
+	if console.Console.URL == "" {
+		return "", fmt.Errorf("console response has no URL")
+	}
+	return console.Console.URL, nil
+}
+
 // PauseVM sends a request to pause a VM
 func PauseVM(computeURL, token, vmID string) error {
 	url := fmt.Sprintf("%s/servers/%s/action", computeURL, vmID)

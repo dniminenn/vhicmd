@@ -13,7 +13,7 @@ Available Commands (aliases):
   catalog (cat)                       Fetch and display the OpenStack service catalog
   completion                          Generate the autocompletion script for the specified shell
   config (cfg | conf)                 Manage vhicmd configuration
-  console (console-log)               Print a VM's console log
+  console (console-log)               Print a VM's console log, or its console URL
   create (new)                        Create resources like VMs or volumes
   delete (rm | del)                   Delete resources
   details (show)                      Show details of resources
@@ -206,10 +206,11 @@ vhicmd reboot soft <vm-id>      # Soft reboot (asks first)
 vhicmd reboot hard <vm-id>      # Hard reboot (asks first)
 ```
 
-Read a VM's console log:
+Read a VM's console log, or get its interactive console:
 ```bash
 vhicmd console <vm-id>          # Whole console log
 vhicmd console <vm-id> -n 100   # Last 100 lines
+vhicmd console <vm-id> --url    # URL of the noVNC console
 ```
 
 View usage information:
