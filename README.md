@@ -169,6 +169,7 @@ vhicmd list domains              # Admin only
 vhicmd list projects
 vhicmd list vms [--name filter]                                        # Shows IPs and power state
 vhicmd list volumes
+vhicmd list snapshots [--volume <volume-id|name>]
 vhicmd list networks [--name filter]
 vhicmd list ports [--status DOWN] [--name filter] [--mac-address addr]  # Shows all ports by default
 vhicmd list flavors
@@ -180,6 +181,7 @@ Get detailed information:
 ```bash
 vhicmd details vm <vm-id>
 vhicmd details volume <volume-id>
+vhicmd details snapshot <snapshot-id>
 vhicmd details image <image-id>
 vhicmd details port <port-id>
 ```
@@ -377,6 +379,13 @@ vhicmd delete volume <volume-id>
 Manage bootable flag:
 ```bash
 vhicmd bootable <volume-id> true|false
+```
+
+Volume snapshots:
+```bash
+vhicmd create snapshot <volume-id|name> --name <name> [--description <text>]
+vhicmd create snapshot <volume-id|name> --name <name> --force   # Volume is attached to a VM
+vhicmd delete snapshot <snapshot-id>
 ```
 
 ### Image Management
