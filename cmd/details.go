@@ -171,9 +171,18 @@ var vmDetailsCmd = &cobra.Command{
 		if portsErr != nil {
 			fmt.Printf("could not be read: %v\n", portsErr)
 		} else {
+			// Group names are a nicety; without them the IDs are shown.
+			groupNames := map[string]string{}
+			if networkURL, err := validateTokenEndpoint(tok, "network"); err == nil {
+				if groups, err := api.ListSecurityGroups(networkURL, tok.Value, nil); err == nil {
+					for _, g := range groups.SecurityGroups {
+						groupNames[g.ID] = g.Name
+					}
+				}
+			}
 			responseparser.PrintTable(
 				[]string{"Port ID", "MAC Address", "Fixed IPs", "Port Security", "Security Groups", "Allowed Address Pairs"},
-				vmPortRows(ports))
+				vmPortRows(ports, groupNames))
 		}
 
 		summary, decoded := describeUserData(userData, flagDetailsUserData)
@@ -188,11 +197,18 @@ var vmDetailsCmd = &cobra.Command{
 	},
 }
 
-// vmPortRows renders one table row per port of a VM.
-func vmPortRows(ports []api.Port) [][]string {
+// vmPortRows renders one table row per port of a VM; groupNames maps security group IDs to names.
+func vmPortRows(ports []api.Port, groupNames map[string]string) [][]string {
 	var rows [][]string
 	for _, p := range ports {
-		var ips, pairs []string
+		var ips, pairs, groups []string
+		for _, id := range p.SecurityGroups {
+			if name := groupNames[id]; name != "" {
+				groups = append(groups, fmt.Sprintf("%s (%s)", name, id))
+			} else {
+				groups = append(groups, id)
+			}
+		}
 		for _, ip := range p.FixedIPs {
 			ips = append(ips, ip.IPAddress)
 		}
@@ -212,7 +228,7 @@ func vmPortRows(ports []api.Port) [][]string {
 			p.MACAddress,
 			stringOrNone(strings.Join(ips, ", ")),
 			portSecurity,
-			stringOrNone(strings.Join(p.SecurityGroups, ", ")),
+			stringOrNone(strings.Join(groups, ", ")),
 			stringOrNone(strings.Join(pairs, ", ")),
 		})
 	}

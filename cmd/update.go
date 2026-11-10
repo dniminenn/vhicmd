@@ -10,6 +10,7 @@ import (
 
 var flagUpdatePortAllowedPairs string
 var flagUpdatePortSecurity bool
+var flagUpdatePortSecurityGroups string
 
 var updateCmd = &cobra.Command{
 	Use:     "update",
@@ -458,7 +459,7 @@ var detachPortCmd = &cobra.Command{
 
 var updatePortCmd = &cobra.Command{
 	Use:   "port <port-id-or-name>",
-	Short: "Update port attributes (e.g. allowed address pairs, port security)",
+	Short: "Update port attributes (allowed address pairs, port security, security groups)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		portRef := args[0]
@@ -477,8 +478,10 @@ var updatePortCmd = &cobra.Command{
 		hasAllowedPairs := cmd.Flags().Changed("allowed-address-pairs")
 		hasPortSecurity := cmd.Flags().Changed("port-security")
 
-		if !hasAllowedPairs && !hasPortSecurity {
-			return fmt.Errorf("no update flags specified; use --allowed-address-pairs or --port-security")
+		hasSecurityGroups := cmd.Flags().Changed("security-groups")
+
+		if !hasAllowedPairs && !hasPortSecurity && !hasSecurityGroups {
+			return fmt.Errorf("no update flags specified; use --allowed-address-pairs, --port-security or --security-groups")
 		}
 
 		update := api.PortUpdateFields{}
@@ -503,6 +506,17 @@ var updatePortCmd = &cobra.Command{
 			}
 		}
 
+		if hasSecurityGroups {
+			groups, err := resolveSecurityGroups(networkURL, flagUpdatePortSecurityGroups)
+			if err != nil {
+				return err
+			}
+			if hasPortSecurity && !flagUpdatePortSecurity && len(groups) > 0 {
+				return fmt.Errorf("a port without port security cannot have security groups")
+			}
+			update.SecurityGroups = &groups
+		}
+
 		port, err := api.UpdatePort(networkURL, tok.Value, portID, update)
 		if err != nil {
 			return err
@@ -511,6 +525,9 @@ var updatePortCmd = &cobra.Command{
 		fmt.Printf("Updated port %s:\n", portID)
 		if hasPortSecurity && port.PortSecurityEnabled != nil {
 			fmt.Printf("  port_security_enabled: %v\n", *port.PortSecurityEnabled)
+		}
+		if hasSecurityGroups {
+			fmt.Printf("  security_groups: %s\n", stringOrNone(strings.Join(port.SecurityGroups, ", ")))
 		}
 		if hasAllowedPairs {
 			fmt.Printf("  allowed_address_pairs:\n")
@@ -549,6 +566,7 @@ func init() {
 
 	// Port subcommand
 	updatePortCmd.Flags().StringVar(&flagUpdatePortAllowedPairs, "allowed-address-pairs", "", "Comma-separated IPs to allow (for Keepalived VIPs, etc.)")
+	updatePortCmd.Flags().StringVar(&flagUpdatePortSecurityGroups, "security-groups", "", "Comma-separated security group IDs or names; replaces the port's groups, \"\" removes all")
 	updatePortCmd.Flags().BoolVar(&flagUpdatePortSecurity, "port-security", true, "Enable/disable port security (anti-spoofing)")
 
 	// Add to update command

@@ -48,7 +48,7 @@ func TestVMPortRows(t *testing.T) {
 			},
 		},
 		{ID: "port-2", MACAddress: "fa:16:3e:00:00:02", SecurityGroups: []string{"sg-1", "sg-2"}},
-	})
+	}, map[string]string{"sg-1": "default"})
 	if len(rows) != 2 {
 		t.Fatalf("rows = %d", len(rows))
 	}
@@ -56,7 +56,7 @@ func TestVMPortRows(t *testing.T) {
 		rows[0][5] != "10.0.0.100, 10.0.0.101 (fa:16:3e:00:00:99)" {
 		t.Errorf("row 0 = %q", rows[0])
 	}
-	if rows[1][2] != "none" || rows[1][3] != "N/A" || rows[1][4] != "sg-1, sg-2" || rows[1][5] != "none" {
+	if rows[1][2] != "none" || rows[1][3] != "N/A" || rows[1][4] != "default (sg-1), sg-2" || rows[1][5] != "none" {
 		t.Errorf("row 1 = %q", rows[1])
 	}
 }
