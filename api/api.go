@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jessegalley/vhicmd/internal/httpclient"
@@ -233,6 +234,30 @@ func listAllPages(listURL, token, linksKey string, page func(body []byte) error)
 		query := u.Query()
 		query.Set("marker", marker)
 		u.RawQuery = query.Encode()
+	}
+}
+
+// WaitTimeout bounds every wait for a VM or volume to reach a state. Commands may change it.
+var WaitTimeout = 30 * time.Minute
+
+// waitInterval is the pause between two polls of a wait.
+var waitInterval = 10 * time.Second
+
+// waitFor polls check until it reports done or an error, and fails with timeoutMsg once WaitTimeout has passed.
+func waitFor(timeoutMsg string, check func() (done bool, err error)) error {
+	deadline := time.Now().Add(WaitTimeout)
+	for {
+		done, err := check()
+		if err != nil {
+			return err
+		}
+		if done {
+			return nil
+		}
+		if !time.Now().Add(waitInterval).Before(deadline) {
+			return fmt.Errorf("%s", timeoutMsg)
+		}
+		time.Sleep(waitInterval)
 	}
 }
 

@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 )
 
 // SetVolumeBootable sets a volume’s bootable flag
@@ -141,22 +140,19 @@ func DeleteVolume(storageURL, token, volumeID string) error {
 
 // WaitForVolumeStatus polls volume status until it matches target or times out
 func WaitForVolumeStatus(storageURL, token, volumeID, targetStatus string) error {
-	maxAttempts := 30 // ~5 minutes with 10s intervals
-	for i := 0; i < maxAttempts; i++ {
+	return waitFor(fmt.Sprintf("timeout waiting for volume to become %s", targetStatus), func() (bool, error) {
 		volume, err := GetVolumeDetails(storageURL, token, volumeID)
 		if err != nil {
-			return fmt.Errorf("failed to get volume status: %v", err)
+			return false, fmt.Errorf("failed to get volume status: %v", err)
 		}
-		status := volume.Status
-		if status == targetStatus {
-			return nil
+		if volume.Status == targetStatus {
+			return true, nil
 		}
-		if status == "error" {
-			return fmt.Errorf("volume entered error state while waiting for %s", targetStatus)
+		if volume.Status == "error" {
+			return false, fmt.Errorf("volume entered error state while waiting for %s", targetStatus)
 		}
-		time.Sleep(10 * time.Second)
-	}
-	return fmt.Errorf("timeout waiting for volume to become %s", targetStatus)
+		return false, nil
+	})
 }
 
 // DetachVolume sends a request to detach a volume from a VM.
