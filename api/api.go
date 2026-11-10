@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 
 	"github.com/google/uuid"
 	"github.com/jessegalley/vhicmd/internal/httpclient"
@@ -165,6 +166,58 @@ func callPUT(url, token string, body interface{}) (ApiResponse, error) {
 	}
 
 	return apiResp, nil
+}
+
+// listAllPages GETs a list URL and then every following page, calling page with each body.
+// The next page is taken from the rel=next entry of the linksKey array; only its marker is
+// used, because the href can carry an internal host or scheme.
+func listAllPages(listURL, token, linksKey string, page func(body []byte) error) error {
+	u, err := url.Parse(listURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %v", err)
+	}
+
+	seen := map[string]bool{}
+	for {
+		apiResp, err := callGET(u.String(), token)
+		if err != nil {
+			return err
+		}
+		if apiResp.ResponseCode != 200 {
+			return fmt.Errorf("list request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+		}
+		if err := page([]byte(apiResp.Response)); err != nil {
+			return err
+		}
+
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(apiResp.Response), &envelope); err != nil {
+			return fmt.Errorf("failed to parse list response: %v", err)
+		}
+		var links []Link
+		if raw, ok := envelope[linksKey]; ok {
+			if err := json.Unmarshal(raw, &links); err != nil {
+				return fmt.Errorf("failed to parse %s: %v", linksKey, err)
+			}
+		}
+		marker := ""
+		for _, link := range links {
+			if link.Rel != "next" {
+				continue
+			}
+			if next, err := url.Parse(link.Href); err == nil {
+				marker = next.Query().Get("marker")
+			}
+		}
+		if marker == "" || seen[marker] {
+			return nil
+		}
+		seen[marker] = true
+
+		query := u.Query()
+		query.Set("marker", marker)
+		u.RawQuery = query.Encode()
+	}
 }
 
 func isUuid(s string) bool {

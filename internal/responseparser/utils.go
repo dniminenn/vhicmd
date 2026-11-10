@@ -1,6 +1,12 @@
 package responseparser
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+
+	"github.com/gookit/color"
+	"github.com/olekukonko/tablewriter"
+)
 
 func getPowerStateString(state int) string {
 	switch state {
@@ -34,4 +40,34 @@ func formatBytes(bytes int64) string {
 		return "0 bytes (0.00 GB)"
 	}
 	return fmt.Sprintf("%d bytes (%.2f GB)", bytes, float64(bytes)/1024/1024/1024)
+}
+
+// PrintTable prints rows under the given headers in the common table style.
+func PrintTable(headers []string, rows [][]string) {
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader(headers)
+	applyTableStyle(table)
+	table.AppendBulk(rows)
+	table.Render()
+}
+
+// PrintFieldTable prints a titled Field/Value table.
+func PrintFieldTable(title string, rows [][]string) {
+	fmt.Printf("\n%s:\n", title)
+	PrintTable([]string{"Field", "Value"}, rows)
+}
+
+// Name renders a resource name the way the list tables do.
+func Name(s string) string {
+	return color.Style{color.FgGreen}.Render(s)
+}
+
+// VolumeStatus renders a volume or snapshot status in colour.
+func VolumeStatus(s string) string {
+	return colorStyleVolAvailability(s)
+}
+
+// Bool renders a coloured TRUE or FALSE.
+func Bool(b bool) string {
+	return colorStyleBool(b)
 }
