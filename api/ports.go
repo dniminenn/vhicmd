@@ -162,6 +162,15 @@ func ListPorts(baseURL, token string, queryParams map[string]string) (PortListRe
 	return result, nil
 }
 
+// ListVMPorts fetches the ports attached to a VM.
+func ListVMPorts(baseURL, token, vmID string) ([]Port, error) {
+	resp, err := ListPorts(baseURL, token, map[string]string{"device_id": vmID})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Ports, nil
+}
+
 // GetPortDetails fetches details of a specific port by ID
 func GetPortDetails(baseURL, token, portID string) (Port, error) {
 	var wrapper struct {

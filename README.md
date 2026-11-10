@@ -179,7 +179,8 @@ vhicmd list image-members <image>
 
 Get detailed information:
 ```bash
-vhicmd details vm <vm-id>
+vhicmd details vm <vm-id>                # Also lists each port's security groups, port security, IPs and allowed address pairs
+vhicmd details vm <vm-id> --user-data    # Also prints the VM's user data, decoded
 vhicmd details volume <volume-id>
 vhicmd details snapshot <snapshot-id>
 vhicmd details image <image-id>
