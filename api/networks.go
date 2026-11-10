@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 )
 
 // Network represents a single network object in the response.
@@ -70,31 +69,19 @@ func ListNetworks(baseURL, token string, queryParams map[string]string) (struct 
 		Networks []Network `json:"networks"`
 	}
 
-	// Construct the request URL with query parameters.
-	baseURL += "/v2.0/networks"
-	if len(queryParams) > 0 {
-		params := url.Values{}
-		for key, value := range queryParams {
-			params.Add(key, value)
+	result.Networks = []Network{}
+	err := listPages(baseURL+"/v2.0/networks", token, queryParams, "networks_links", func(body []byte) error {
+		var page struct {
+			Networks []Network `json:"networks"`
 		}
-		baseURL += "?" + params.Encode()
-	}
-
-	// Send a GET request to fetch the networks.
-	apiResp, err := callGET(baseURL, token)
+		if err := json.Unmarshal(body, &page); err != nil {
+			return fmt.Errorf("failed to parse networks response: %v", err)
+		}
+		result.Networks = append(result.Networks, page.Networks...)
+		return nil
+	})
 	if err != nil {
 		return result, fmt.Errorf("failed to fetch networks: %v", err)
-	}
-
-	// Check for a successful response code.
-	if apiResp.ResponseCode != 200 {
-		return result, fmt.Errorf("list networks request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
-	}
-
-	// Parse the JSON response.
-	err = json.Unmarshal([]byte(apiResp.Response), &result)
-	if err != nil {
-		return result, fmt.Errorf("failed to parse networks response: %v", err)
 	}
 
 	return result, nil
@@ -216,7 +203,7 @@ func GetNetworkIDByName(networkURL, token, networkName string) (string, error) {
 		return networkName, nil
 	}
 
-	networks, err := ListNetworks(networkURL, token, nil)
+	networks, err := ListNetworks(networkURL, token, map[string]string{"name": networkName})
 	if err != nil {
 		return "", err
 	}

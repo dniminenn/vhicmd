@@ -168,6 +168,22 @@ func callPUT(url, token string, body interface{}) (ApiResponse, error) {
 	return apiResp, nil
 }
 
+// listPages GETs a list endpoint with the query and calls page with each body.
+// It follows every page, unless the caller set a limit: then it is that one page.
+func listPages(listURL, token string, queryParams map[string]string, linksKey string, page func(body []byte) error) error {
+	query := url.Values{}
+	for key, value := range queryParams {
+		query.Set(key, value)
+	}
+	if len(query) > 0 {
+		listURL += "?" + query.Encode()
+	}
+	if query.Has("limit") {
+		linksKey = ""
+	}
+	return listAllPages(listURL, token, linksKey, page)
+}
+
 // listAllPages GETs a list URL and then every following page, calling page with each body.
 // The next page is taken from the rel=next entry of the linksKey array; only its marker is
 // used, because the href can carry an internal host or scheme.

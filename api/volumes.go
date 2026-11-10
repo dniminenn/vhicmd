@@ -53,17 +53,26 @@ func GetVolumeIDByName(storageURL, token, volumeName string) (string, error) {
 	if isUuid(volumeName) {
 		return volumeName, nil
 	}
-	qP := make(map[string]string)
-	volumes, err := ListVolumes(storageURL, token, qP)
-	if err != nil {
-		return "", err
+
+	exact := func(volumes VolumeListResponse) []Volume {
+		found := []Volume{}
+		for _, volume := range volumes.Volumes {
+			if volume.Name == volumeName {
+				found = append(found, volume)
+			}
+		}
+		return found
 	}
 
-	foundVolumes := []Volume{}
-	for _, volume := range volumes.Volumes {
-		if volume.Name == volumeName {
-			foundVolumes = append(foundVolumes, volume)
+	volumes, err := ListVolumes(storageURL, token, map[string]string{"name": volumeName})
+	foundVolumes := exact(volumes)
+	if err != nil || len(foundVolumes) == 0 {
+		// cinder can be configured to refuse the name filter: go through the whole list.
+		volumes, err = ListVolumes(storageURL, token, nil)
+		if err != nil {
+			return "", err
 		}
+		foundVolumes = exact(volumes)
 	}
 
 	if len(foundVolumes) == 0 {
@@ -75,30 +84,21 @@ func GetVolumeIDByName(storageURL, token, volumeName string) (string, error) {
 	return foundVolumes[0].ID, nil
 }
 
-// ListVolumes fetches the list of volumes.
+// ListVolumes fetches the list of volumes, every page unless a limit is set.
 func ListVolumes(storageURL, token string, queryParams map[string]string) (VolumeListResponse, error) {
-	var result VolumeListResponse
+	result := VolumeListResponse{Volumes: []Volume{}}
 
-	url := fmt.Sprintf("%s/volumes/detail", storageURL)
-	if len(queryParams) > 0 {
-		url += "?"
-		for key, value := range queryParams {
-			url += fmt.Sprintf("%s=%s&", key, value)
+	listURL := fmt.Sprintf("%s/volumes/detail", storageURL)
+	err := listPages(listURL, token, queryParams, "volumes_links", func(body []byte) error {
+		var page VolumeListResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return fmt.Errorf("failed to parse volumes response: %v", err)
 		}
-		url = url[:len(url)-1]
-	}
-
-	apiResp, err := callGET(url, token)
+		result.Volumes = append(result.Volumes, page.Volumes...)
+		return nil
+	})
 	if err != nil {
 		return result, fmt.Errorf("failed to fetch volumes: %v", err)
-	}
-	if apiResp.ResponseCode != 200 {
-		return result, fmt.Errorf("list volumes request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
-	}
-
-	err = json.Unmarshal([]byte(apiResp.Response), &result)
-	if err != nil {
-		return result, fmt.Errorf("failed to parse volumes response: %v", err)
 	}
 	return result, nil
 }

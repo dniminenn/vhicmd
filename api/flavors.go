@@ -39,30 +39,21 @@ type FlavorListResponse struct {
 	Flavors []Flavor `json:"flavors"`
 }
 
-// ListFlavors fetches the list of flavors from the stored compute URL
+// ListFlavors fetches the list of flavors from the stored compute URL, every page unless a limit is set.
 func ListFlavors(computeURL, token string, queryParams map[string]string) (FlavorListResponse, error) {
-	var result FlavorListResponse
+	result := FlavorListResponse{Flavors: []Flavor{}}
 
-	url := fmt.Sprintf("%s/flavors", computeURL)
-
-	if len(queryParams) > 0 {
-		url += "?"
-		for key, value := range queryParams {
-			url += fmt.Sprintf("%s=%s&", key, value)
+	listURL := fmt.Sprintf("%s/flavors", computeURL)
+	err := listPages(listURL, token, queryParams, "flavors_links", func(body []byte) error {
+		var page FlavorListResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return fmt.Errorf("failed to parse flavors response: %v", err)
 		}
-		url = url[:len(url)-1]
-	}
-
-	apiResp, err := callGET(url, token)
+		result.Flavors = append(result.Flavors, page.Flavors...)
+		return nil
+	})
 	if err != nil {
 		return result, fmt.Errorf("failed to fetch flavors: %v", err)
-	}
-	if apiResp.ResponseCode != 200 {
-		return result, fmt.Errorf("flavors request failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
-	}
-
-	if err := json.Unmarshal([]byte(apiResp.Response), &result); err != nil {
-		return result, fmt.Errorf("failed to parse flavors response: %v", err)
 	}
 	return result, nil
 }
