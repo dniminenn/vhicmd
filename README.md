@@ -108,6 +108,7 @@ Configuration Options:
 - `app_cred_id`, `app_cred_secret`: Application credential (API key), replaces username/password
 - `app_cred_file`: Path to a yaml file with `id` and `secret`, alternative to the two keys above
 
+- `timeout`: Per-request timeout in seconds (optional, default 120)
 Application credential configuration:
 ```yaml
 host: panel-vhi1.yourhost.com
@@ -443,6 +444,7 @@ The migration process supports:
 - Most commands accept either resource IDs or names
 - `vhicmd` supports networks with IPAM disabled which allows manually specifying MAC addresses as a normal user when creating a port
 - When using templates, all variables in the template must be provided in the ci-data parameter
+- `--timeout`: Per-request timeout in seconds (default 120)
 - Template validation strictly enforces that all variables are accounted for
 
 
