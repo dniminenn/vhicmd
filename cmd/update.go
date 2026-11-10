@@ -487,14 +487,14 @@ var updatePortCmd = &cobra.Command{
 		update := api.PortUpdateFields{}
 
 		if hasAllowedPairs {
-			var pairs []api.AllowedAddressPair
+			pairs := []api.AllowedAddressPair{}
 			for _, ip := range strings.Split(flagUpdatePortAllowedPairs, ",") {
 				ip = strings.TrimSpace(ip)
 				if ip != "" {
 					pairs = append(pairs, api.AllowedAddressPair{IPAddress: ip})
 				}
 			}
-			update.AllowedAddressPairs = pairs
+			update.AllowedAddressPairs = &pairs
 		}
 
 		if hasPortSecurity {
@@ -565,7 +565,7 @@ func init() {
 	updateImageCmd.AddCommand(imageTypeCmd)
 
 	// Port subcommand
-	updatePortCmd.Flags().StringVar(&flagUpdatePortAllowedPairs, "allowed-address-pairs", "", "Comma-separated IPs to allow (for Keepalived VIPs, etc.)")
+	updatePortCmd.Flags().StringVar(&flagUpdatePortAllowedPairs, "allowed-address-pairs", "", "Comma-separated IPs to allow (for Keepalived VIPs, etc.); replaces the port's pairs, \"\" removes all")
 	updatePortCmd.Flags().StringVar(&flagUpdatePortSecurityGroups, "security-groups", "", "Comma-separated security group IDs or names; replaces the port's groups, \"\" removes all")
 	updatePortCmd.Flags().BoolVar(&flagUpdatePortSecurity, "port-security", true, "Enable/disable port security (anti-spoofing)")
 

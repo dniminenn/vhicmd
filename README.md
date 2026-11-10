@@ -444,6 +444,7 @@ vhicmd delete port <port-id-name-or-mac>   # Accepts UUID, name, or MAC address
 Update port:
 ```bash
 vhicmd update port <port-id|name> --allowed-address-pairs <ip1>,<ip2>
+vhicmd update port <port-id|name> --allowed-address-pairs ""       # Remove all allowed address pairs
 vhicmd update port <port-id|name> --port-security=false           # Also removes its security groups
 vhicmd update port <port-id|name> --security-groups <sg1>,<sg2>   # IDs or names; replaces the port's groups
 ```

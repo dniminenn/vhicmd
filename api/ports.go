@@ -90,15 +90,19 @@ type PortUpdateRequest struct {
 
 // PortUpdateFields contains only the fields that can be updated on a port
 type PortUpdateFields struct {
-	AllowedAddressPairs []AllowedAddressPair `json:"allowed_address_pairs,omitempty"`
-	PortSecurityEnabled *bool                `json:"port_security_enabled,omitempty"`
-	SecurityGroups      *[]string            `json:"security_groups,omitempty"`
+	// Pointers, so that an empty list is sent and clears the field while nil leaves it alone.
+	AllowedAddressPairs *[]AllowedAddressPair `json:"allowed_address_pairs,omitempty"`
+	PortSecurityEnabled *bool                 `json:"port_security_enabled,omitempty"`
+	SecurityGroups      *[]string             `json:"security_groups,omitempty"`
 }
 
-// UpdatePortAllowedAddressPairs sets the allowed address pairs on an existing port
+// UpdatePortAllowedAddressPairs sets the allowed address pairs on an existing port; none clears them
 func UpdatePortAllowedAddressPairs(baseURL, token, portID string, pairs []AllowedAddressPair) (Port, error) {
+	if pairs == nil {
+		pairs = []AllowedAddressPair{}
+	}
 	return UpdatePort(baseURL, token, portID, PortUpdateFields{
-		AllowedAddressPairs: pairs,
+		AllowedAddressPairs: &pairs,
 	})
 }
 
