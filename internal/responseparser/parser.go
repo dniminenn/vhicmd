@@ -576,6 +576,22 @@ func PrintVMsTable(vms []VM) {
 	table.Render()
 }
 
+// vmNetworkRows renders the Networks table rows: one per IP, or one with N/A for a network without IPs.
+func vmNetworkRows(networks []NetworkDetail) [][]string {
+	var rows [][]string
+	for _, net := range networks {
+		netName := color.Style{color.FgGreen}.Render(net.Name)
+		if len(net.IPs) == 0 {
+			rows = append(rows, []string{netName, "N/A", net.MacAddr, net.UUID, stringOrNA(net.PortID)})
+			continue
+		}
+		for _, ip := range net.IPs {
+			rows = append(rows, []string{netName, ip.Address, net.MacAddr, net.UUID, net.PortID})
+		}
+	}
+	return rows
+}
+
 func PrintVMDetailsTable(details []VMDetails) {
 	d := details[0]
 
@@ -612,31 +628,7 @@ func PrintVMDetailsTable(details []VMDetails) {
 	netTable.SetHeader([]string{"Network Name", "IP Address", "MAC Address", "Network UUID", "Port ID"})
 	applyTableStyle(netTable)
 
-	for _, net := range d.Networks {
-		netName := color.Style{color.FgGreen}.Render(net.Name)
-		if len(net.IPs) == 0 {
-			// Show unmanaged networks
-			netTable.Append([]string{
-				netName,
-				"N/A",
-				"N/A",
-				"N/A",
-				net.MacAddr,
-				net.UUID,
-			})
-		} else {
-			// Show networks with IPs
-			for _, ip := range net.IPs {
-				netTable.Append([]string{
-					netName,
-					ip.Address,
-					net.MacAddr,
-					net.UUID,
-					net.PortID,
-				})
-			}
-		}
-	}
+	netTable.AppendBulk(vmNetworkRows(d.Networks))
 	netTable.Render()
 
 	// Volume Details
