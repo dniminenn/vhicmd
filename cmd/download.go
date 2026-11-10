@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var flagDownloadWait time.Duration
+
 var downloadCmd = &cobra.Command{
 	Use:     "download",
 	Aliases: []string{"dl"},
@@ -60,6 +62,10 @@ var downloadVolumeCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		volumeID := args[0]
 		outputPath := args[1]
+
+		if flagDownloadWait <= 0 {
+			return fmt.Errorf("--wait must be a positive duration, for example 30m")
+		}
 
 		storageURL, err := validateTokenEndpoint(tok, "volumev3")
 		if err != nil {
@@ -116,38 +122,15 @@ var downloadVolumeCmd = &cobra.Command{
 			}
 		}
 
-		fmt.Printf("Waiting for image to become active...\n")
-		maxAttempts := 60 // 5 minutes with 5 second intervals
-		var lastStatus string
-		active := false
-		for attempt := 0; attempt < maxAttempts; attempt++ {
-			image, err := api.GetImageDetails(imageURL, tok.Value, imageID)
-			if err != nil {
-				fmt.Printf("Warning: Error checking image status: %v (retrying...)\n", err)
-				time.Sleep(5 * time.Second)
-				continue
-			}
-
-			if image.Status != lastStatus {
-				fmt.Printf("Image status: %s\n", image.Status)
-				lastStatus = image.Status
-			}
-
-			if image.Status == "active" {
-				fmt.Printf("Image is now active\n")
-				active = true
-				break
-			} else if image.Status == "error" {
-				cleanupTempImage()
-				return fmt.Errorf("image creation failed with status: error")
-			}
-
-			time.Sleep(5 * time.Second)
-		}
-		if !active {
+		fmt.Printf("Waiting for image to become active (up to %s)...\n", flagDownloadWait)
+		err = api.WaitForImageActive(imageURL, tok.Value, imageID, flagDownloadWait, 5*time.Second, func(msg string) {
+			fmt.Println(msg)
+		})
+		if err != nil {
 			cleanupTempImage()
-			return fmt.Errorf("timed out waiting for image %s to become active (last status: %s)", imageID, lastStatus)
+			return err
 		}
+		fmt.Printf("Image is now active\n")
 
 		// Download the image
 		fmt.Printf("Downloading image...\n")
@@ -170,6 +153,7 @@ var downloadVolumeCmd = &cobra.Command{
 }
 
 func init() {
+	downloadVolumeCmd.Flags().DurationVar(&flagDownloadWait, "wait", 30*time.Minute, "How long to wait for the temporary image to become active")
 	downloadCmd.AddCommand(downloadImageCmd)
 	downloadCmd.AddCommand(downloadVolumeCmd)
 	rootCmd.AddCommand(downloadCmd)

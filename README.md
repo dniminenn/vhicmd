@@ -188,6 +188,7 @@ Download resources:
 ```bash
 vhicmd download image <image-id> [--output path]
 vhicmd download volume <volume-id> [--output path]
+vhicmd download volume <volume-id> <path> --wait 1h   # Wait longer than the default 30m for the temporary image
 ```
 
 Manage VM state:
