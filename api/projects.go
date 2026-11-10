@@ -71,9 +71,19 @@ func GetProjectIDByName(identityUrl, token, projectName string) (string, error) 
 		return "", fmt.Errorf("error unmarshalling project list: %v", err)
 	}
 
-	if len(result.Projects) == 0 {
-		return "", fmt.Errorf("no project found for name %s", projectName)
+	var found []string
+	for _, project := range result.Projects {
+		if project.Name == projectName {
+			found = append(found, project.ID)
+		}
 	}
 
-	return result.Projects[0].ID, nil
+	if len(found) == 0 {
+		return "", fmt.Errorf("no project found for name %s", projectName)
+	}
+	if len(found) > 1 {
+		return "", fmt.Errorf("multiple projects found for name %s", projectName)
+	}
+
+	return found[0], nil
 }
