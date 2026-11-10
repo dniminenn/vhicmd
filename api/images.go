@@ -285,35 +285,32 @@ func GetImageIDByName(imageURL, token, imageName string) (string, error) {
 
 // GetImageNameByID fetches the name of an image by its ID.
 func GetImageNameByID(imageURL, token, imageID string) (string, error) {
-	images, err := ListImages(imageURL, token, nil)
+	image, err := GetImageByID(imageURL, token, imageID)
 	if err != nil {
 		return "", err
 	}
-	imageName := ""
-	for _, image := range images.Images {
-		if image.ID == imageID {
-			imageName = image.Name
-			break
-		}
-	}
-	if imageName == "" {
-		return "", fmt.Errorf("no image found for ID %s", imageID)
-	}
-	return imageName, nil
+	return image.Name, nil
 }
 
-// GetImageByID fetches the details of an image by its ID.
+// GetImageByID fetches one image by its ID.
 func GetImageByID(imageURL, token, imageID string) (Image, error) {
-	images, err := ListImages(imageURL, token, nil)
+	var image Image
+
+	apiResp, err := callGET(fmt.Sprintf("%s/v2/images/%s", imageURL, imageID), token)
 	if err != nil {
-		return Image{}, err
+		return image, fmt.Errorf("failed to get image %s: %v", imageID, err)
 	}
-	for _, image := range images.Images {
-		if image.ID == imageID {
-			return image, nil
-		}
+	if apiResp.ResponseCode == 404 {
+		return image, fmt.Errorf("no image found for ID %s", imageID)
 	}
-	return Image{}, fmt.Errorf("no image found for ID %s", imageID)
+	if apiResp.ResponseCode != 200 {
+		return image, fmt.Errorf("image %s request failed [%d]: %s", imageID, apiResp.ResponseCode, apiResp.Response)
+	}
+
+	if err := json.Unmarshal([]byte(apiResp.Response), &image); err != nil {
+		return image, fmt.Errorf("failed to parse image %s: %v", imageID, err)
+	}
+	return image, nil
 }
 
 // GetImageSize fetches the size of an image by its ID.
