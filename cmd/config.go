@@ -21,6 +21,7 @@ var configKeys = []string{
 	"app_cred_file",
 	"app_cred_id",
 	"app_cred_secret",
+	"timeout",
 }
 
 // secretConfigKeys are masked by config list/get

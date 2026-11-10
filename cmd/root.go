@@ -70,6 +70,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 	rootCmd.PersistentFlags().StringP("host", "H", "", "VHI host to connect to")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file (default is $HOME/.vhirc)")
 	rootCmd.PersistentFlags().StringVar(&rcDirFlag, "rc", "", "RC directory for config and token (overrides VHICMD_RCDIR)")
+	rootCmd.PersistentFlags().Int("timeout", 0, "Per-request timeout in seconds (default 120, or 'timeout' in .vhirc)")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if cmd.Name() == "version" ||
@@ -80,6 +81,14 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 		debug, _ := cmd.Flags().GetBool("debug")
 		viper.Set("debug", debug)
 		debugMode = debug
+
+		if cmd.Flags().Changed("timeout") {
+			t, _ := cmd.Flags().GetInt("timeout")
+			if t <= 0 {
+				return fmt.Errorf("--timeout must be a positive number of seconds")
+			}
+			viper.Set("timeout", t)
+		}
 
 		hostFlag, _ := cmd.Flags().GetString("host")
 		host := hostFlag

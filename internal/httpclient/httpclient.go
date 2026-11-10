@@ -12,7 +12,15 @@ import (
 	"github.com/spf13/viper"
 )
 
-const requestTimeout = 10 * time.Second
+const defaultRequestTimeout = 120 * time.Second
+
+// requestTimeout is the per-request limit: the "timeout" setting in seconds, or the default.
+func requestTimeout() time.Duration {
+	if s := viper.GetInt("timeout"); s > 0 {
+		return time.Duration(s) * time.Second
+	}
+	return defaultRequestTimeout
+}
 
 const userAgent = "vhicmd v0.1"
 
@@ -41,7 +49,7 @@ func SendRequest(url string, jsonData []byte) (*http.Response, error) {
 	}
 
 	client := &http.Client{
-		Timeout: requestTimeout,
+		Timeout: requestTimeout(),
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -112,7 +120,7 @@ func SendRequestWithTokenVersion(method, url, token string, body io.Reader, nova
 	}
 
 	// Send the request
-	client := &http.Client{Timeout: requestTimeout}
+	client := &http.Client{Timeout: requestTimeout()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send HTTP request: %w", err)
@@ -139,7 +147,7 @@ func SendRequestWithTokenVersion(method, url, token string, body io.Reader, nova
 
 // SendStreamingGetRequest sends a GET request with no client timeout, suitable
 // for streaming large downloads (e.g. image/volume files) that can take much
-// longer than the standard requestTimeout. The caller must close resp.Body.
+// longer than the standard request timeout. The caller must close resp.Body.
 func SendStreamingGetRequest(url, token string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -228,7 +236,7 @@ func SendImagePatch(url, token string, body io.Reader) (*http.Response, error) {
 		req.Header.Set("X-Auth-Token", token)
 	}
 
-	client := &http.Client{Timeout: requestTimeout}
+	client := &http.Client{Timeout: requestTimeout()}
 	return client.Do(req)
 }
 
