@@ -174,7 +174,7 @@ vhicmd list vms [--name filter]                                        # Shows I
 vhicmd list volumes
 vhicmd list snapshots [--volume <volume-id|name>]
 vhicmd list networks [--name filter]
-vhicmd list ports [--status DOWN] [--name filter] [--mac-address addr]  # Shows all ports by default
+vhicmd list ports [--status DOWN] [--name filter] [--mac-address addr] [--device-id vm-id]  # Shows all ports by default
 vhicmd list security-groups
 vhicmd list floating-ips
 vhicmd list flavors

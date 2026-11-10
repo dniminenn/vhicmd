@@ -546,6 +546,7 @@ func init() {
 	listNetworksCmd.Flags().String("project-id", "", "Filter networks by project ID")
 
 	listPortsCmd.Flags().String("name", "", "Filter ports by name")
+	listPortsCmd.Flags().String("device-id", "", "Filter ports by the ID of the VM or device they are attached to")
 	listPortsCmd.Flags().String("network-id", "", "Filter ports by network ID")
 	listPortsCmd.Flags().String("mac-address", "", "Filter ports by MAC address")
 	listPortsCmd.Flags().String("status", "", "Filter ports by status")
