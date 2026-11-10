@@ -356,6 +356,37 @@ func waitForImageReady(imageURL, token, imageID string, debug bool) error {
 	return fmt.Errorf("timeout waiting for image to be ready")
 }
 
+// WaitForImageActive polls an image until it is active, for at most timeout.
+// A failed poll is reported through progress and retried; only status "error" ends the wait early.
+func WaitForImageActive(imageURL, token, imageID string, timeout, interval time.Duration, progress func(string)) error {
+	if progress == nil {
+		progress = func(string) {}
+	}
+	deadline := time.Now().Add(timeout)
+	lastStatus := ""
+	for {
+		image, err := GetImageDetails(imageURL, token, imageID)
+		if err != nil {
+			progress(fmt.Sprintf("Warning: Error checking image status: %v (retrying...)", err))
+		} else {
+			if image.Status != lastStatus {
+				progress(fmt.Sprintf("Image status: %s", image.Status))
+				lastStatus = image.Status
+			}
+			switch image.Status {
+			case "active":
+				return nil
+			case "error":
+				return fmt.Errorf("image creation failed with status: error")
+			}
+		}
+		if !time.Now().Add(interval).Before(deadline) {
+			return fmt.Errorf("timed out after %s waiting for image %s to become active (last status: %s)", timeout, imageID, lastStatus)
+		}
+		time.Sleep(interval)
+	}
+}
+
 // UpdateImageVisibility updates the visibility of an image
 func UpdateImageVisibility(imageURL, token, imageID, visibility string) error {
 	url := fmt.Sprintf("%s/v2/images/%s", imageURL, imageID)
