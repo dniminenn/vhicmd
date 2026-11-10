@@ -113,6 +113,10 @@ type SecurityGroupRule struct {
 	PortRangeMax   *int   `json:"port_range_max"`
 	RemoteIPPrefix string `json:"remote_ip_prefix"`
 	EtherType      string `json:"ethertype"`
+	// Set by neutron only.
+	SecurityGroupID string `json:"security_group_id,omitempty"`
+	RemoteGroupID   string `json:"remote_group_id,omitempty"`
+	Description     string `json:"description,omitempty"`
 }
 
 // VmVolume represents a volume attached to a VM.

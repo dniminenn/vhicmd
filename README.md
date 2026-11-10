@@ -174,6 +174,7 @@ vhicmd list volumes
 vhicmd list snapshots [--volume <volume-id|name>]
 vhicmd list networks [--name filter]
 vhicmd list ports [--status DOWN] [--name filter] [--mac-address addr]  # Shows all ports by default
+vhicmd list security-groups
 vhicmd list flavors
 vhicmd list images [--name filter] [--visibility public|private|shared]
 vhicmd list image-members <image>
@@ -187,6 +188,7 @@ vhicmd details volume <volume-id>
 vhicmd details snapshot <snapshot-id>
 vhicmd details image <image-id>
 vhicmd details port <port-id>
+vhicmd details security-group <sg-id|name>   # Shows its rules
 ```
 
 ![vhicmd details](docs/vhicmd-show-vm.png)
@@ -430,6 +432,23 @@ vhicmd create port --network <network-id> [--mac <mac-address>] [--name <port-na
 Delete port:
 ```bash
 vhicmd delete port <port-id-name-or-mac>   # Accepts UUID, name, or MAC address
+```
+
+Update port:
+```bash
+vhicmd update port <port-id|name> --allowed-address-pairs <ip1>,<ip2>
+vhicmd update port <port-id|name> --port-security=false           # Also removes its security groups
+vhicmd update port <port-id|name> --security-groups <sg1>,<sg2>   # IDs or names; replaces the port's groups
+```
+
+Security groups:
+```bash
+vhicmd create security-group --name <name> [--description <text>]
+vhicmd create security-group-rule --group <sg-id|name> --direction ingress|egress \
+  [--protocol tcp|udp|icmp|...] [--port-min <port>] [--port-max <port>] \
+  [--remote-ip <cidr>] [--ethertype IPv4|IPv6]
+vhicmd delete security-group-rule <rule-id>
+vhicmd delete security-group <sg-id|name>
 ```
 
 ### VM Migration
