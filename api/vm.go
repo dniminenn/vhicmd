@@ -368,6 +368,17 @@ func RequestStopVM(computeURL, token, vmID string) error {
 	return serverAction(computeURL, token, vmID, "stop", ActionRequest{OsStop: &struct{}{}})
 }
 
+// ShelveVM asks nova to shelve a VM and returns without waiting.
+func ShelveVM(computeURL, token, vmID string) error {
+	return serverAction(computeURL, token, vmID, "shelve", map[string]any{"shelve": nil})
+}
+
+// UnshelveVM asks nova to unshelve a VM and returns without waiting.
+// The body must stay null: an object is only valid from microversion 2.77 and needs more fields.
+func UnshelveVM(computeURL, token, vmID string) error {
+	return serverAction(computeURL, token, vmID, "unshelve", map[string]any{"unshelve": nil})
+}
+
 // StopVM sends a request to stop a VM and waits for it to be fully stopped
 func StopVM(computeURL, token, vmID string) error {
 	if err := RequestStopVM(computeURL, token, vmID); err != nil {
