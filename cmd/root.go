@@ -173,6 +173,7 @@ func initConfig() {
 	v, err := config.InitConfig(cfgFile)
 	if err != nil {
 		fmt.Printf("Error reading config: %v\n", err)
+		os.Exit(1)
 	}
 	// Store viper instance if needed
 	viper.Reset()
