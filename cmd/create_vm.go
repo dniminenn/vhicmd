@@ -84,6 +84,12 @@ func runCreateVM(o createVMOptions) error {
 	// 3. Build the networks array (--ports path or --networks path)
 	//----------------------------------------------------------------
 	var netBytes []byte
+	networks := o.Networks
+	if networks == "" {
+		networks = viper.GetString("networks")
+	}
+	// --networks none: a VM with no network interface at all.
+	noNetwork := o.Ports == "" && strings.EqualFold(strings.TrimSpace(networks), "none")
 
 	if o.Ports != "" {
 		// --ports path: use pre-created port IDs directly
@@ -104,12 +110,12 @@ func runCreateVM(o createVMOptions) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal networks: %v", err)
 		}
+	} else if noNetwork {
+		if o.IPs != "" || o.MACs != "" {
+			return fmt.Errorf("--networks none cannot be combined with --ips or --macaddr")
+		}
 	} else {
 		// --networks path: original flow
-		networks := o.Networks
-		if networks == "" {
-			networks = viper.GetString("networks")
-		}
 		if networks == "" {
 			return fmt.Errorf("no networks specified; use --networks, --ports, or set 'networks' in config")
 		}
@@ -243,6 +249,9 @@ func runCreateVM(o createVMOptions) error {
 
 	// Assign the networks JSON string
 	request.Server.Networks = string(netBytes)
+	if noNetwork {
+		request.Server.Networks = "none"
+	}
 
 	//----------------------------------------------------------------
 	// 12. Block device mapping

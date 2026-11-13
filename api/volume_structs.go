@@ -28,6 +28,7 @@ type CreateVolumeRequest struct {
 		Size        int    `json:"size"`
 		Description string `json:"description,omitempty"`
 		ImageRef    string `json:"imageRef,omitempty"`
+		SourceVolID string `json:"source_volid,omitempty"`
 		VolumeType  string `json:"volume_type,omitempty"`
 	} `json:"volume"`
 }
