@@ -221,6 +221,18 @@ vhicmd console <vm-id> -n 100   # Last 100 lines
 vhicmd console <vm-id> --url    # URL of the noVNC console
 ```
 
+Work on a VM through its console, without any network path to it:
+```bash
+vhicmd console send <vm-id> 'root'                  # Type a line and press Enter
+vhicmd console send <vm-id> --key ctrl-c            # Press keys: enter, esc, f2, ctrl-alt-delete, ...
+vhicmd console screenshot <vm-id> screen.png        # Save the screen as a PNG
+vhicmd console exec <vm-id> 'lsblk; df -h'          # Run a command, print its output, exit with its status
+```
+`console send` and `console exec` type on the VM's keyboard over VNC (printable ASCII, US layout).
+`console exec` needs a root shell waiting at the console (tty1) and reads the output back from the
+console log, so the VM must have a serial port the log records (`--tty`, default `/dev/ttyS0`).
+The log keeps only its last 100 KB or so; send larger output to a file in the VM.
+
 View usage information:
 ```bash
 vhicmd usage                    # Show resource usage
