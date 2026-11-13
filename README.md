@@ -252,6 +252,11 @@ vhicmd create vm --name <name> \
   --macaddr <mac-addresses>
 ```
 
+Without any network interface (reach it with `vhicmd console`):
+```bash
+vhicmd create vm --name <name> --flavor <flavor-id> --image <image-id> --networks none
+```
+
 With templates (inline variables):
 ```bash
 vhicmd create vm --name <name> \
@@ -392,6 +397,10 @@ vhicmd create volume --name <name> \
   --size <size-GB> \
   --type <volume-type> \
   --description <description>
+```
+Copy a volume, attached or not; the source is left as it is:
+```bash
+vhicmd create volume --name <name> --source-volume <volume-id|name>
 ```
 Delete volume:
 ```bash

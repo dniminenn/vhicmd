@@ -290,13 +290,44 @@ var createVolumeCmd = &cobra.Command{
 	Aliases: []string{"vol"},
 	Short:   "Create a new storage volume",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if flagVolumeImage == "" && flagVolumeSize <= 0 {
-			return fmt.Errorf("--size is required unless creating from an image (--image)")
+		if flagVolumeImage != "" && flagVolumeSource != "" {
+			return fmt.Errorf("--image and --source-volume are mutually exclusive")
+		}
+		if flagVolumeImage == "" && flagVolumeSource == "" && flagVolumeSize <= 0 {
+			return fmt.Errorf("--size is required unless creating from an image (--image) or a volume (--source-volume)")
 		}
 
 		storageURL, err := validateTokenEndpoint(tok, "volumev3")
 		if err != nil {
 			return err
+		}
+
+		if flagVolumeSource != "" {
+			sourceID, err := api.GetVolumeIDByName(storageURL, tok.Value, flagVolumeSource)
+			if err != nil {
+				return err
+			}
+			source, err := api.GetVolumeDetails(storageURL, tok.Value, sourceID)
+			if err != nil {
+				return err
+			}
+			var request api.CreateVolumeRequest
+			request.Volume.Name = flagVolumeName
+			request.Volume.Description = flagVolumeDescription
+			request.Volume.SourceVolID = sourceID
+			// A copy is at least as large as its source and keeps the source's type unless --type is given.
+			request.Volume.Size = max(flagVolumeSize, source.Size)
+			request.Volume.VolumeType = source.VolumeType
+			if cmd.Flags().Changed("type") {
+				request.Volume.VolumeType = flagVolumeType
+			}
+
+			resp, err := api.CreateVolume(storageURL, tok.Value, request)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Volume copied from %s: ID: %s, Name: %s, Size: %d GB\n", sourceID, resp.Volume.ID, resp.Volume.Name, resp.Volume.Size)
+			return nil
 		}
 
 		if flagVolumeImage != "" {
@@ -421,6 +452,7 @@ var (
 	flagVolumeDescription string
 	flagVolumeType        string
 	flagVolumeImage       string
+	flagVolumeSource      string
 	flagImageFile         string
 	flagImageName         string
 	flagDiskFormat        string
@@ -441,7 +473,7 @@ func init() {
 	createVMCmd.Flags().StringVar(&flagVMName, "name", "", "Name of the virtual machine")
 	createVMCmd.Flags().StringVar(&flagFlavorRef, "flavor", "", "Flavor ID for the virtual machine")
 	createVMCmd.Flags().StringVar(&flagImageRef, "image", "", "Image ID for the virtual machine")
-	createVMCmd.Flags().StringVar(&flagNetworkCSV, "networks", "", "Comma-separated list of network names or UUIDs")
+	createVMCmd.Flags().StringVar(&flagNetworkCSV, "networks", "", "Comma-separated list of network names or UUIDs, or 'none' for a VM without a network interface")
 	createVMCmd.Flags().StringVar(&flagIPCSV, "ips", "", "Comma-separated list of IP addresses ('none' for unmanaged network)")
 	createVMCmd.Flags().IntVar(&flagVMSize, "size", 0, "Size in GB of boot volume")
 	createVMCmd.Flags().BoolVar(&flagVMNetboot, "netboot", false, "Enable network boot with blank volume (deprecated, use --image)")
@@ -464,6 +496,7 @@ func init() {
 	createVolumeCmd.Flags().StringVar(&flagVolumeDescription, "description", "", "Description of the volume")
 	createVolumeCmd.Flags().StringVar(&flagVolumeType, "type", "nvme_ec7_2", "Type of the volume: nvme_ec7_2, replica3")
 	createVolumeCmd.Flags().StringVar(&flagVolumeImage, "image", "", "Image ID to create volume from")
+	createVolumeCmd.Flags().StringVar(&flagVolumeSource, "source-volume", "", "Volume ID or name to copy; the source is left as it is")
 
 	createVolumeCmd.MarkFlagRequired("name")
 
