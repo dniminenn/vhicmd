@@ -191,14 +191,19 @@ func growPartitionAndLV(imagePath, partDev, lvPath string) error {
 	// Probe the LV's filesystem type to pick the right grow command.
 	fsType, err := guestfishOutput(imagePath, true, fmt.Sprintf("run\nvfs-type %s\n", lvPath))
 	if err != nil {
-		return fmt.Errorf("failed to probe filesystem type of %s: %v", lvPath, err)
+		return fmt.Errorf("failed to probe filesystem type of %s: %v\n%s", lvPath, err, fsType)
 	}
 	fsType = strings.TrimSpace(fsType)
 
 	var growFS string
 	switch fsType {
 	case "xfs":
-		// xfs_growfs operates on a mounted filesystem
+		// xfs_growfs operates on a mounted filesystem, so the appliance
+		// (this host's kernel) must be able to mount it. Check before resizing.
+		if out, err := guestfishOutput(imagePath, true, fmt.Sprintf("run\nmount-ro %s /\n", lvPath)); err != nil {
+			return fmt.Errorf("this host's kernel cannot mount the xfs filesystem on %s, so it cannot be grown here; "+
+				"an image built on a newer OS needs a host with a kernel at least as new: %v\n%s", lvPath, err, out)
+		}
 		growFS = fmt.Sprintf("mount %s /\nxfs-growfs /", lvPath)
 	case "ext2", "ext3", "ext4":
 		growFS = fmt.Sprintf("resize2fs %s", lvPath)
