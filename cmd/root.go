@@ -82,8 +82,9 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 		viper.Set("debug", debug)
 		debugMode = debug
 
-		if cmd.Flags().Changed("timeout") {
-			t, _ := cmd.Flags().GetInt("timeout")
+		// Read from the root flag set: rebuild has a --timeout of its own that shadows this one.
+		if rootCmd.PersistentFlags().Changed("timeout") {
+			t, _ := rootCmd.PersistentFlags().GetInt("timeout")
 			if t <= 0 {
 				return fmt.Errorf("--timeout must be a positive number of seconds")
 			}
