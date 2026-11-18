@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -54,5 +55,50 @@ func TestExitStatus(t *testing.T) {
 	}
 	if !strings.Contains(exitCodeError{3}.Error(), "3") {
 		t.Error("error text lacks the status")
+	}
+}
+
+func TestConsoleLogSince(t *testing.T) {
+	long := strings.Repeat("boot line\n", 300)
+	cases := []struct{ name, baseline, log, want string }{
+		{"no baseline", "", "a\nb\n", "a\nb\n"},
+		{"log grew", "a\nb\n", "a\nb\nc\n", "c\n"},
+		{"nothing new", "a\nb\n", "a\nb\n", ""},
+		{"head scrolled out", "old\n" + long + "marker one\n", long + "marker one\nnew\n", "new\n"},
+		{"all scrolled out", "old boot\n", "fresh boot\n", "fresh boot\n"},
+	}
+	for _, c := range cases {
+		if got := consoleLogSince(c.baseline, c.log); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestConsoleFirstMatch(t *testing.T) {
+	re := regexp.MustCompile(`login:`)
+	if line, ok := consoleFirstMatch("Started sshd\r\nweb1 login: ", re); !ok || line != "web1 login: " {
+		t.Errorf("prompt without newline = %q, %v", line, ok)
+	}
+	if line, ok := consoleFirstMatch("a login: x\nb login: y\n", re); !ok || line != "a login: x" {
+		t.Errorf("first of two = %q, %v", line, ok)
+	}
+	if _, ok := consoleFirstMatch("Started sshd\n", re); ok {
+		t.Error("matched a log without the pattern")
+	}
+	// A pattern is matched within one line, not across them.
+	if _, ok := consoleFirstMatch("log\nin:\n", regexp.MustCompile(`log\s*in:`)); ok {
+		t.Error("matched across lines")
+	}
+}
+
+func TestConsoleWaitFlags(t *testing.T) {
+	for _, name := range []string{"wait", "interval", "new"} {
+		if consoleWaitCmd.Flags().Lookup(name) == nil {
+			t.Errorf("console wait has no --%s flag", name)
+		}
+	}
+	// A --timeout here would shadow the global per-request timeout.
+	if consoleWaitCmd.Flags().Lookup("timeout") != nil {
+		t.Error("console wait must not define --timeout")
 	}
 }

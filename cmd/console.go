@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image/png"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,9 @@ var (
 	flagConsoleKeyDelay time.Duration
 	flagConsoleTTY      string
 	flagConsoleWait     time.Duration
+	flagConsoleWaitFor  time.Duration
+	flagConsoleInterval time.Duration
+	flagConsoleNew      bool
 )
 
 // exitCodeError makes vhicmd exit with the status of a command run inside a VM.
@@ -109,7 +113,12 @@ pressed after the text, in order: enter, tab, esc, backspace, delete, up, down, 
 right, home, end, pageup, pagedown, f1 to f12, or a character, each optionally prefixed
 with ctrl-, alt- or shift- (ctrl-c, ctrl-alt-delete).
 
-Only printable ASCII can be typed, and the VM must use a US keyboard layout.`,
+Only printable ASCII can be typed, and the VM must use a US keyboard layout.
+
+The keys go to the VM's screen console (tty1). The log that "vhicmd console" prints is
+the serial console, a different terminal: a prompt that shows only in that log never
+sees these keys, and VHI has no way to type into the serial console. Look at the screen
+with "console screenshot" to see what the keyboard is talking to.`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 && len(flagConsoleKeys) == 0 {
@@ -136,6 +145,89 @@ Only printable ASCII can be typed, and the VM must use a US keyboard layout.`,
 			}
 		}
 		return nil
+	},
+}
+
+// consoleLogSince returns the part of log that was written after baseline was read.
+// The log only keeps its tail, so the end of baseline is looked up in log; when that has
+// scrolled out, everything in log is new.
+func consoleLogSince(baseline, log string) string {
+	if baseline == "" {
+		return log
+	}
+	if strings.HasPrefix(log, baseline) {
+		return log[len(baseline):]
+	}
+	tail := baseline
+	if len(tail) > 1024 {
+		tail = tail[len(tail)-1024:]
+	}
+	if i := strings.LastIndex(log, tail); i >= 0 {
+		return log[i+len(tail):]
+	}
+	return log
+}
+
+// consoleFirstMatch returns the first line of log that matches re. The last line counts
+// even without a newline: a login prompt does not end with one.
+func consoleFirstMatch(log string, re *regexp.Regexp) (string, bool) {
+	for _, line := range strings.Split(strings.ReplaceAll(log, "\r", ""), "\n") {
+		if re.MatchString(line) {
+			return line, true
+		}
+	}
+	return "", false
+}
+
+var consoleWaitCmd = &cobra.Command{
+	Use:   "wait <vm-id|vm-name> <regexp>",
+	Short: "Wait until a line of a VM's console log matches a pattern",
+	Long: `Polls the console log until a line matches the regular expression, prints that line
+and exits 0. Exits 1 when --wait (default 10m) passes first.
+
+  vhicmd console wait web1 'login:'                    # the VM has booted
+  vhicmd console wait web1 'Reached target' --new      # after a reboot: ignore the old log
+
+Without --new a line that is already in the log matches at once.`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		re, err := regexp.Compile(args[1])
+		if err != nil {
+			return fmt.Errorf("invalid pattern: %v", err)
+		}
+		if flagConsoleInterval <= 0 {
+			return fmt.Errorf("--interval must be positive")
+		}
+		computeURL, err := validateTokenEndpoint(tok, "compute")
+		if err != nil {
+			return err
+		}
+		vmID, err := api.GetVMIDByName(computeURL, tok.Value, args[0])
+		if err != nil {
+			return err
+		}
+
+		baseline := ""
+		if flagConsoleNew {
+			if baseline, err = api.GetConsoleOutput(computeURL, tok.Value, vmID, 0); err != nil {
+				return err
+			}
+		}
+		deadline := time.Now().Add(flagConsoleWaitFor)
+		for {
+			log, err := api.GetConsoleOutput(computeURL, tok.Value, vmID, 0)
+			if err != nil {
+				return err
+			}
+			if line, ok := consoleFirstMatch(consoleLogSince(baseline, log), re); ok {
+				fmt.Println(line)
+				return nil
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("no console log line matched %q within %s", args[1], flagConsoleWaitFor)
+			}
+			time.Sleep(flagConsoleInterval)
+		}
 	},
 }
 
@@ -287,12 +379,15 @@ func init() {
 
 	consoleSendCmd.Flags().BoolVar(&flagConsoleNoEnter, "no-enter", false, "Do not press Enter after the text")
 	consoleSendCmd.Flags().StringArrayVar(&flagConsoleKeys, "key", nil, "Key to press after the text, e.g. enter, esc, ctrl-c (repeatable)")
+	consoleWaitCmd.Flags().DurationVar(&flagConsoleWaitFor, "wait", 10*time.Minute, "How long to wait for a match")
+	consoleWaitCmd.Flags().DurationVar(&flagConsoleInterval, "interval", 5*time.Second, "Pause between reads of the console log")
+	consoleWaitCmd.Flags().BoolVar(&flagConsoleNew, "new", false, "Match only output logged after the command started")
 	consoleExecCmd.Flags().StringVar(&flagConsoleTTY, "tty", "/dev/ttyS0", "Serial device in the VM that the console log records")
 	consoleExecCmd.Flags().DurationVar(&flagConsoleWait, "wait", 2*time.Minute, "How long to wait for the command to finish")
 	for _, c := range []*cobra.Command{consoleSendCmd, consoleExecCmd} {
 		c.Flags().DurationVar(&flagConsoleKeyDelay, "key-delay", 20*time.Millisecond, "Pause after each key event; raise it if the VM drops characters")
 	}
 
-	consoleCmd.AddCommand(consoleSendCmd, consoleExecCmd, consoleScreenshotCmd)
+	consoleCmd.AddCommand(consoleSendCmd, consoleExecCmd, consoleScreenshotCmd, consoleWaitCmd)
 	rootCmd.AddCommand(consoleCmd)
 }

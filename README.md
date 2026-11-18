@@ -233,6 +233,16 @@ vhicmd console exec <vm-id> 'lsblk; df -h'          # Run a command, print its o
 console log, so the VM must have a serial port the log records (`--tty`, default `/dev/ttyS0`).
 The log keeps only its last 100 KB or so; send larger output to a file in the VM.
 
+The keyboard is the VM's screen console (tty1); the console log is its serial console. A prompt that
+shows only in the log never sees `console send`, and VHI has no way to type into the serial console.
+`console screenshot` shows what the keyboard is talking to.
+
+Wait for a line in the console log:
+```bash
+vhicmd console wait <vm-id> 'login:'                   # Prints the matching line, exit 0; exit 1 after --wait (default 10m)
+vhicmd console wait <vm-id> 'Reached target' --new     # Only output logged from now on, e.g. after a reboot
+```
+
 View usage information:
 ```bash
 vhicmd usage                    # Show resource usage
