@@ -250,6 +250,25 @@ func DeleteVolumeTransfer(storageURL, token, transferID string) error {
 	return nil
 }
 
+// ListVolumeTypes lists the volume types the project can use.
+func ListVolumeTypes(storageURL, token string) ([]VolumeType, error) {
+	apiResp, err := callGET(fmt.Sprintf("%s/types", storageURL), token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list volume types: %v", err)
+	}
+	if apiResp.ResponseCode != 200 {
+		return nil, fmt.Errorf("list volume types failed [%d]: %s", apiResp.ResponseCode, apiResp.Response)
+	}
+
+	result := struct {
+		VolumeTypes []VolumeType `json:"volume_types"`
+	}{VolumeTypes: []VolumeType{}}
+	if err := json.Unmarshal([]byte(apiResp.Response), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse volume types: %v", err)
+	}
+	return result.VolumeTypes, nil
+}
+
 // ListVolumeTypeAccess lists projects with access to a volume type
 func ListVolumeTypeAccess(storageURL, token, volumeTypeID string) ([]VolumeTypeAccess, error) {
 	var result VolumeTypeAccessList
@@ -350,11 +369,11 @@ func UploadVolumeToImage(storageURL, token, volumeID, imageName string) (VolumeU
 }
 
 // CreateVolumeFromImage creates a new volume from an image
-func CreateVolumeFromImage(storageURL, token, imageID, name string, size int64) (CreateVolumeResponse, error) {
+func CreateVolumeFromImage(storageURL, token, imageID, name string, size int64, volumeType string) (CreateVolumeResponse, error) {
 	request := CreateVolumeRequest{}
 	request.Volume.Name = name
 	request.Volume.ImageRef = imageID
 	request.Volume.Size = int(size)
-	request.Volume.VolumeType = "nvme_ec7_2" // default is 3rep, have to override
+	request.Volume.VolumeType = volumeType
 	return CreateVolume(storageURL, token, request)
 }

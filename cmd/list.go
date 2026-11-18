@@ -100,7 +100,7 @@ var listProjectsCmd = &cobra.Command{
 
 var listFlavorsCmd = &cobra.Command{
 	Use:   "flavors",
-	Short: "List flavors",
+	Short: "List flavors with their vCPUs, RAM and disk",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		computeURL, err := validateTokenEndpoint(tok, "compute")
 		if err != nil {
@@ -149,17 +149,68 @@ var listFlavorsCmd = &cobra.Command{
 		// Table
 		var flavorList []responseparser.Flavor
 		for _, f := range resp.Flavors {
-			flavorList = append(flavorList, responseparser.Flavor{
-				ID:          f.ID,
-				Name:        f.Name,
-				Description: f.Description,
-			})
+			flavorList = append(flavorList, flavorRow(f))
 		}
 		sort.Slice(flavorList, func(i, j int) bool {
 			return natsort.Compare(flavorList[i].Name, flavorList[j].Name)
 		})
 
 		responseparser.PrintFlavorsTable(flavorList)
+		return nil
+	},
+}
+
+// flavorRow maps an API flavor onto its table form.
+func flavorRow(f api.Flavor) responseparser.Flavor {
+	return responseparser.Flavor{
+		ID:          f.ID,
+		Name:        f.Name,
+		Description: f.Description,
+		VCPUs:       f.VCPUs,
+		RAM:         f.RAM,
+		Disk:        f.Disk,
+		Ephemeral:   f.Ephemeral,
+		Swap:        int(f.Swap),
+		IsPublic:    f.IsPublic,
+		IsDisabled:  f.IsDisabled,
+		ExtraSpecs:  f.ExtraSpecs,
+	}
+}
+
+var listVolumeTypesCmd = &cobra.Command{
+	Use:     "volume-types",
+	Aliases: []string{"volume-type", "voltypes"},
+	Short:   "List the volume types (storage policies) a volume can be created with",
+	Args:    cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		storageURL, err := validateTokenEndpoint(tok, "volumev3")
+		if err != nil {
+			return err
+		}
+		types, err := api.ListVolumeTypes(storageURL, tok.Value)
+		if err != nil {
+			return err
+		}
+
+		if flagJsonOutput {
+			b, _ := json.MarshalIndent(types, "", "  ")
+			fmt.Println(string(b))
+			return nil
+		}
+
+		var rows []responseparser.VolumeType
+		for _, t := range types {
+			rows = append(rows, responseparser.VolumeType{
+				ID:          t.ID,
+				Name:        t.Name,
+				Description: t.Description,
+				IsPublic:    t.IsPublic,
+			})
+		}
+		sort.Slice(rows, func(i, j int) bool {
+			return natsort.Compare(rows[i].Name, rows[j].Name)
+		})
+		responseparser.PrintVolumeTypesTable(rows)
 		return nil
 	},
 }
@@ -576,6 +627,7 @@ func init() {
 	listCmd.AddCommand(listVmCmd)
 	listCmd.AddCommand(listImagesCmd)
 	listCmd.AddCommand(listVolumesCmd)
+	listCmd.AddCommand(listVolumeTypesCmd)
 	listCmd.AddCommand(listImageMembersCmd)
 	rootCmd.AddCommand(listCmd)
 }

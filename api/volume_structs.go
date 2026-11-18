@@ -126,6 +126,15 @@ type AcceptTransferRequest struct {
 	} `json:"accept"`
 }
 
+// VolumeType is a storage policy a volume can be created with.
+type VolumeType struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	IsPublic    bool              `json:"is_public"`
+	ExtraSpecs  map[string]string `json:"extra_specs,omitempty"`
+}
+
 // VolumeTypeAccess represents access to a volume type
 type VolumeTypeAccess struct {
 	ProjectID    string `json:"project_id"`

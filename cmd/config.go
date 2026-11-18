@@ -18,6 +18,7 @@ var configKeys = []string{
 	"networks",
 	"flavor_id",
 	"image_id",
+	"volume_type",
 	"app_cred_file",
 	"app_cred_id",
 	"app_cred_secret",

@@ -3,6 +3,7 @@ package responseparser
 import (
 	"fmt"
 	"os"
+	"sort"
 	"text/tabwriter"
 
 	"github.com/gookit/color"
@@ -109,19 +110,117 @@ type Flavor struct {
 	ID          string
 	Name        string
 	Description string
+	VCPUs       int
+	RAM         int // MiB
+	Disk        int // GiB
+	Ephemeral   int
+	Swap        int
+	IsPublic    bool
+	IsDisabled  bool
+	ExtraSpecs  map[string]string
+}
+
+// FormatMiB prints a RAM size in GiB when it is a whole number of them.
+func FormatMiB(mib int) string {
+	if mib >= 1024 && mib%1024 == 0 {
+		return fmt.Sprintf("%d GiB", mib/1024)
+	}
+	return fmt.Sprintf("%d MiB", mib)
 }
 
 func PrintFlavorsTable(flavors []Flavor) {
+	described := false
+	for _, f := range flavors {
+		if f.Description != "" {
+			described = true
+		}
+	}
+
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"NAME", "ID", "DESCRIPTION"})
+	header := []string{"NAME", "ID", "VCPUS", "RAM", "DISK (GB)"}
+	if described {
+		header = append(header, "DESCRIPTION")
+	}
+	table.SetHeader(header)
 
 	applyTableStyle(table)
 
 	for _, f := range flavors {
-		table.Append([]string{
+		row := []string{
 			color.Style{color.FgGreen}.Render(f.Name),
 			f.ID,
-			f.Description,
+			fmt.Sprintf("%d", f.VCPUs),
+			FormatMiB(f.RAM),
+			fmt.Sprintf("%d", f.Disk),
+		}
+		if described {
+			row = append(row, f.Description)
+		}
+		table.Append(row)
+	}
+	table.Render()
+}
+
+func PrintFlavorDetailsTable(f Flavor) {
+	fmt.Println("\nFlavor Info:")
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Field", "Value"})
+	applyTableStyle(table)
+
+	table.Append([]string{"ID", f.ID})
+	table.Append([]string{"Name", color.Style{color.FgGreen}.Render(f.Name)})
+	if f.Description != "" {
+		table.Append([]string{"Description", f.Description})
+	}
+	table.Append([]string{"VCPUs", fmt.Sprintf("%d", f.VCPUs)})
+	table.Append([]string{"RAM", FormatMiB(f.RAM)})
+	table.Append([]string{"Disk", fmt.Sprintf("%d GB", f.Disk)})
+	table.Append([]string{"Ephemeral", fmt.Sprintf("%d GB", f.Ephemeral)})
+	table.Append([]string{"Swap", fmt.Sprintf("%d MiB", f.Swap)})
+	table.Append([]string{"Public", colorStyleBool(f.IsPublic)})
+	table.Append([]string{"Disabled", colorStyleBool(f.IsDisabled)})
+	table.Render()
+
+	if len(f.ExtraSpecs) > 0 {
+		fmt.Println("\nExtra Specs:")
+		extraTable := tablewriter.NewWriter(os.Stdout)
+		extraTable.SetHeader([]string{"Key", "Value"})
+		applyTableStyle(extraTable)
+
+		keys := make([]string, 0, len(f.ExtraSpecs))
+		for k := range f.ExtraSpecs {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			extraTable.Append([]string{k, f.ExtraSpecs[k]})
+		}
+		extraTable.Render()
+	}
+}
+
+// -------------------------------------------------------------------
+// VOLUME TYPES
+// -------------------------------------------------------------------
+
+type VolumeType struct {
+	ID          string
+	Name        string
+	Description string
+	IsPublic    bool
+}
+
+func PrintVolumeTypesTable(types []VolumeType) {
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"NAME", "ID", "PUBLIC", "DESCRIPTION"})
+	applyTableStyle(table)
+
+	for _, t := range types {
+		table.Append([]string{
+			color.Style{color.FgGreen}.Render(t.Name),
+			t.ID,
+			colorStyleBool(t.IsPublic),
+			t.Description,
 		})
 	}
 	table.Render()

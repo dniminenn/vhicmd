@@ -473,12 +473,47 @@ var volumeDetailsCmd = &cobra.Command{
 	},
 }
 
+var flavorDetailsCmd = &cobra.Command{
+	Use:   "flavor <flavor-id|flavor-name>",
+	Short: "Show the vCPUs, RAM, disk and extra specs of a flavor",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		computeURL, err := validateTokenEndpoint(tok, "compute")
+		if err != nil {
+			return err
+		}
+
+		// A flavor ID is not always a UUID, so the argument is tried as an ID when no name matches.
+		flavorID := args[0]
+		id, lookupErr := api.GetFlavorIDByName(computeURL, tok.Value, args[0])
+		if lookupErr == nil {
+			flavorID = id
+		}
+		flavor, err := api.GetFlavorDetails(computeURL, tok.Value, flavorID)
+		if err != nil {
+			if lookupErr != nil {
+				return fmt.Errorf("flavor %s: %v", args[0], lookupErr)
+			}
+			return err
+		}
+
+		if flagJsonOutput {
+			b, _ := json.MarshalIndent(flavor, "", "  ")
+			fmt.Println(string(b))
+			return nil
+		}
+		responseparser.PrintFlavorDetailsTable(flavorRow(flavor))
+		return nil
+	},
+}
+
 func init() {
 	vmDetailsCmd.Flags().BoolVar(&flagDetailsUserData, "user-data", false, "Print the VM's user data, base64-decoded")
 	detailsCmd.AddCommand(vmDetailsCmd)
 	detailsCmd.AddCommand(portDetailsCmd)
 	detailsCmd.AddCommand(imageDetailsCmd)
 	detailsCmd.AddCommand(volumeDetailsCmd)
+	detailsCmd.AddCommand(flavorDetailsCmd)
 	rootCmd.AddCommand(detailsCmd)
 	detailsCmd.PersistentFlags().BoolVar(&flagJsonOutput, "json", false, "Output in JSON format")
 }

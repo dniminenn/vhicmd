@@ -26,7 +26,7 @@ const reimageMicroversion = "2.93"
 const defaultMicroversion = "2.72"
 
 // Below 2.93 a volume-backed VM is deleted and created again from the image with
-// the same name, flavor, boot volume size, networks, MACs and fixed IPs.
+// the same name, flavor, boot volume size and type, networks, MACs and fixed IPs.
 var rebuildCmd = &cobra.Command{
 	Use:   "rebuild <vm-name-or-id> --image <image-name-or-id>",
 	Short: "Rebuild a VM from an image (its disk is replaced, its addresses stay)",
@@ -36,8 +36,8 @@ In place when the compute API accepts microversion 2.93 or the VM boots from a
 local disk: the VM keeps its ID, ports and addresses.
 
 A volume-backed VM on an older compute API (or with --recreate) is deleted and
-created again from the image with the same name, flavor, boot volume size,
-networks, MACs (unmanaged networks) and fixed IPs (managed networks). The VM
+created again from the image with the same name, flavor, boot volume size and
+type, networks, MACs (unmanaged networks) and fixed IPs (managed networks). The VM
 gets a new ID and a new boot volume.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -254,9 +254,6 @@ func buildRecreatePlan(vm api.VMDetail, ifaces api.VMNetworkListResponse, vols [
 		p.NICs = append(p.NICs, n)
 	}
 
-	if p.BootVolumeType != "" && p.BootVolumeType != "nvme_ec7_2" {
-		p.NotCarried = append(p.NotCarried, fmt.Sprintf("boot volume type %s (create uses nvme_ec7_2)", p.BootVolumeType))
-	}
 	if p.AvailabilityZone != "" {
 		p.NotCarried = append(p.NotCarried, fmt.Sprintf("availability zone %s (create has no zone option)", p.AvailabilityZone))
 	}
@@ -289,7 +286,7 @@ func buildRecreatePlan(vm api.VMDetail, ifaces api.VMNetworkListResponse, vols [
 
 // CreateOptions maps the plan onto create vm; usePorts reattaches the old ports.
 func (p recreatePlan) CreateOptions(usePorts bool) createVMOptions {
-	o := createVMOptions{Name: p.Name, Flavor: p.Flavor, Image: p.ImageID, Size: p.Size}
+	o := createVMOptions{Name: p.Name, Flavor: p.Flavor, Image: p.ImageID, Size: p.Size, VolumeType: p.BootVolumeType}
 	var ports, nets, ips, macs []string
 	for _, n := range p.NICs {
 		ports = append(ports, n.PortID)
@@ -316,6 +313,9 @@ func (p recreatePlan) CreateOptions(usePorts bool) createVMOptions {
 func (p recreatePlan) CreateCommand(usePorts bool) string {
 	o := p.CreateOptions(usePorts)
 	cmd := fmt.Sprintf("vhicmd create vm --name %s --flavor %s --image %s --size %d", o.Name, o.Flavor, o.Image, o.Size)
+	if o.VolumeType != "" {
+		cmd += " --volume-type " + o.VolumeType
+	}
 	if usePorts {
 		return cmd + " --ports " + o.Ports
 	}

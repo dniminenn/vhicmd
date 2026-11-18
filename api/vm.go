@@ -320,14 +320,13 @@ func GetVMDetails(computeURL, token, vmID string) (VMDetail, error) {
 		if flavorID != "" {
 			flv, err := GetFlavorDetails(computeURL, token, flavorID)
 			if err == nil {
-				vm.Flavor.RAM = flv.Flavor.RAM
-				vm.Flavor.VCPUs = flv.Flavor.VCPUs
-				vm.Flavor.Disk = flv.Flavor.Disk
-				vm.Flavor.Ephemeral = flv.Flavor.Ephemeral
-				// If needed, handle flv.Flavor.Swap logic
-				vm.Flavor.Swap = 0
-				vm.Flavor.OriginalName = flv.Flavor.Name
-				vm.Flavor.ExtraSpecs = flv.Flavor.ExtraSpecs
+				vm.Flavor.RAM = flv.RAM
+				vm.Flavor.VCPUs = flv.VCPUs
+				vm.Flavor.Disk = flv.Disk
+				vm.Flavor.Ephemeral = flv.Ephemeral
+				vm.Flavor.Swap = int(flv.Swap)
+				vm.Flavor.OriginalName = flv.Name
+				vm.Flavor.ExtraSpecs = flv.ExtraSpecs
 			}
 		}
 	}

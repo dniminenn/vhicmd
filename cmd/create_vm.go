@@ -27,6 +27,8 @@ var createVMCmd = &cobra.Command{
 			MACs:       flagMacAddrCSV,
 			Ports:      flagPortCSV,
 			Size:       flagVMSize,
+			Volume:     flagVMVolume,
+			VolumeType: flagVMVolumeType,
 			Netboot:    flagVMNetboot,
 			UserData:   flagUserData,
 			CIData:     flagCIData,
@@ -40,8 +42,90 @@ type createVMOptions struct {
 	Name, Flavor, Image          string
 	Networks, IPs, MACs, Ports   string
 	Size                         int
+	Volume, VolumeType           string
 	Netboot                      bool
 	UserData, CIData, CIDataFile string
+}
+
+// defaultVolumeType is the type of a new boot volume when neither --volume-type nor the
+// volume_type setting names one.
+const defaultVolumeType = "nvme_ec7_2"
+
+// bootVolumeType picks the type of a new boot volume: the flag, the setting, the default.
+func bootVolumeType(flag string) string {
+	if flag != "" {
+		return flag
+	}
+	if t := viper.GetString("volume_type"); t != "" {
+		return t
+	}
+	return defaultVolumeType
+}
+
+// checkBootVolumeOptions rejects the flags that make no sense with --volume.
+func checkBootVolumeOptions(o createVMOptions) error {
+	if o.Volume == "" {
+		return nil
+	}
+	switch {
+	case o.Image != "":
+		return fmt.Errorf("--volume and --image are mutually exclusive: the VM boots from the volume as it is")
+	case o.Netboot:
+		return fmt.Errorf("--volume and --netboot are mutually exclusive")
+	case o.Size > 0:
+		return fmt.Errorf("--size does not apply to --volume: the volume keeps its size")
+	case o.VolumeType != "":
+		return fmt.Errorf("--volume-type does not apply to --volume: the volume keeps its type")
+	}
+	return nil
+}
+
+// checkBootVolume says why a volume cannot be the boot disk of a new VM, if it cannot.
+func checkBootVolume(v api.VolumeDetail) error {
+	if v.Status != "available" {
+		return fmt.Errorf("volume %s is %s; it must be available (detached) to boot a VM from it", v.ID, v.Status)
+	}
+	if v.Bootable != "true" {
+		return fmt.Errorf("volume %s is not bootable; run: vhicmd bootable %s true", v.ID, v.ID)
+	}
+	return nil
+}
+
+// buildUserData returns the base64 user data of the VM, templated when ci-data is given.
+func buildUserData(o createVMOptions) (string, error) {
+	if o.CIData == "" && o.CIDataFile == "" {
+		return readAndEncodeUserData(o.UserData)
+	}
+
+	var ciDataStr string
+	if o.CIDataFile != "" {
+		fileBytes, err := os.ReadFile(o.CIDataFile)
+		if err != nil {
+			return "", fmt.Errorf("error reading ci-data-file: %v", err)
+		}
+		ciDataStr = string(fileBytes)
+	} else {
+		ciDataStr = o.CIData
+	}
+	ciData, err := template.ParseKeyValueString(ciDataStr)
+	if err != nil {
+		return "", fmt.Errorf("error parsing ci-data: %v", err)
+	}
+
+	rawUserData, err := readUserDataFile(o.UserData)
+	if err != nil {
+		return "", err
+	}
+
+	validation := template.ValidateTemplate(rawUserData, ciData)
+	if !validation.Valid {
+		return "", fmt.Errorf("template validation failed: missing vars %v", validation.MissingVariables)
+	}
+	if len(validation.UnusedVariables) > 0 {
+		return "", fmt.Errorf("template validation failed: unused vars %v", validation.UnusedVariables)
+	}
+
+	return encodeUserData(template.ReplaceVariables(rawUserData, ciData))
 }
 
 func runCreateVM(o createVMOptions) error {
@@ -65,11 +149,15 @@ func runCreateVM(o createVMOptions) error {
 		return err
 	}
 
+	if err := checkBootVolumeOptions(o); err != nil {
+		return err
+	}
+
 	//----------------------------------------------------------------
 	// 2. Gather image and flavor references
 	//----------------------------------------------------------------
 	imageRef := o.Image
-	if imageRef == "" {
+	if imageRef == "" && o.Volume == "" {
 		imageRef = viper.GetString("image_id")
 	}
 	flavorRef := o.Flavor
@@ -211,8 +299,10 @@ func runCreateVM(o createVMOptions) error {
 	//----------------------------------------------------------------
 	// 4. Resolve image & flavor by name if necessary
 	//----------------------------------------------------------------
-	if imgID, err := api.GetImageIDByName(imageURL, tok.Value, imageRef); err == nil && imgID != "" {
-		imageRef = imgID
+	if imageRef != "" {
+		if imgID, err := api.GetImageIDByName(imageURL, tok.Value, imageRef); err == nil && imgID != "" {
+			imageRef = imgID
+		}
 	}
 	if fid, err := api.GetFlavorIDByName(computeURL, tok.Value, flavorRef); err == nil && fid != "" {
 		flavorRef = fid
@@ -254,9 +344,45 @@ func runCreateVM(o createVMOptions) error {
 	}
 
 	//----------------------------------------------------------------
-	// 12. Block device mapping
+	// 12. Cloud-init / user data (templating if needed)
 	//----------------------------------------------------------------
-	if imageRef != "" {
+	if o.UserData != "" {
+		userData, err := buildUserData(o)
+		if err != nil {
+			return err
+		}
+		request.Server.UserData = userData
+		request.Server.ConfigDrive = true
+	}
+
+	//----------------------------------------------------------------
+	// 13. Block device mapping
+	//----------------------------------------------------------------
+	switch {
+	case o.Volume != "":
+		// Boot from an existing volume, which outlives the VM.
+		volumeID, err := api.GetVolumeIDByName(storageURL, tok.Value, o.Volume)
+		if err != nil {
+			return fmt.Errorf("volume %q: %v", o.Volume, err)
+		}
+		volume, err := api.GetVolumeDetails(storageURL, tok.Value, volumeID)
+		if err != nil {
+			return err
+		}
+		if err := checkBootVolume(volume); err != nil {
+			return err
+		}
+		request.Server.BlockDeviceMappingV2 = []map[string]interface{}{
+			{
+				"boot_index":            "0",
+				"uuid":                  volumeID,
+				"source_type":           "volume",
+				"destination_type":      "volume",
+				"delete_on_termination": false,
+			},
+		}
+
+	case imageRef != "":
 		// Use the image => create volume from image
 		request.Server.BlockDeviceMappingV2 = []map[string]interface{}{
 			{
@@ -266,72 +392,19 @@ func runCreateVM(o createVMOptions) error {
 				"destination_type":      "volume",
 				"volume_size":           volumeSize,
 				"delete_on_termination": true,
-				"volume_type":           "nvme_ec7_2",
+				"volume_type":           bootVolumeType(o.VolumeType),
 				"disk_bus":              "scsi",
 			},
 		}
 
-		//------------------------------------------------------------
-		// 13. Cloud-init / user data (templating if needed)
-		//------------------------------------------------------------
-		if o.UserData != "" {
-			var userData string
-			if o.CIData != "" || o.CIDataFile != "" {
-				// Templating path
-				var ciDataStr string
-				if o.CIDataFile != "" {
-					fileBytes, err := os.ReadFile(o.CIDataFile)
-					if err != nil {
-						return fmt.Errorf("error reading ci-data-file: %v", err)
-					}
-					ciDataStr = string(fileBytes)
-				} else {
-					ciDataStr = o.CIData
-				}
-				ciData, err := template.ParseKeyValueString(ciDataStr)
-				if err != nil {
-					return fmt.Errorf("error parsing ci-data: %v", err)
-				}
-
-				rawUserData, err := readUserDataFile(o.UserData)
-				if err != nil {
-					return err
-				}
-
-				validation := template.ValidateTemplate(rawUserData, ciData)
-				if !validation.Valid {
-					return fmt.Errorf("template validation failed: missing vars %v", validation.MissingVariables)
-				}
-				if len(validation.UnusedVariables) > 0 {
-					return fmt.Errorf("template validation failed: unused vars %v", validation.UnusedVariables)
-				}
-
-				processedUserData := template.ReplaceVariables(rawUserData, ciData)
-				userData, err = encodeUserData(processedUserData)
-				if err != nil {
-					return err
-				}
-
-			} else {
-				// Plain user-data, no templating
-				userData, err = readAndEncodeUserData(o.UserData)
-				if err != nil {
-					return err
-				}
-			}
-
-			request.Server.UserData = userData
-			request.Server.ConfigDrive = true
-		}
-
-	} else {
+	default:
 		// Netboot or no image => create blank volume
 		fmt.Fprintf(os.Stderr, "Creating blank boot volume for VM %s...\n", o.Name)
 		volRequest := api.CreateVolumeRequest{}
 		volRequest.Volume.Name = fmt.Sprintf("%s-boot", o.Name)
 		volRequest.Volume.Size = volumeSize
 		volRequest.Volume.Description = "Boot volume for " + o.Name
-		volRequest.Volume.VolumeType = "nvme_ec7_2"
+		volRequest.Volume.VolumeType = bootVolumeType(o.VolumeType)
 
 		volResp, err := api.CreateVolume(storageURL, tok.Value, volRequest)
 		if err != nil {
@@ -475,16 +548,18 @@ func runCreateVM(o createVMOptions) error {
 }
 
 var (
-	flagVMName     string
-	flagFlavorRef  string
-	flagImageRef   string
-	flagNetworkCSV string
-	flagIPCSV      string
-	flagVMSize     int
-	flagVMNetboot  bool
-	flagUserData   string
-	flagMacAddrCSV string
-	flagCIData     string
-	flagCIDataFile string
-	flagPortCSV    string
+	flagVMName       string
+	flagFlavorRef    string
+	flagImageRef     string
+	flagNetworkCSV   string
+	flagIPCSV        string
+	flagVMSize       int
+	flagVMNetboot    bool
+	flagUserData     string
+	flagMacAddrCSV   string
+	flagCIData       string
+	flagCIDataFile   string
+	flagPortCSV      string
+	flagVMVolume     string
+	flagVMVolumeType string
 )

@@ -187,7 +187,7 @@ func TestGetNetworkIDByName(t *testing.T) {
 }
 
 func TestGetFlavorIDByNameFollowsPages(t *testing.T) {
-	srv, requests := pagedServer(t, "/flavors", "flavors", lookupItems, nil)
+	srv, requests := pagedServer(t, "/flavors/detail", "flavors", lookupItems, nil)
 	if id, err := GetFlavorIDByName(srv.URL, "tok", "last"); err != nil || id != "id-8" {
 		t.Errorf("last = %q, %v", id, err)
 	}
@@ -197,7 +197,7 @@ func TestGetFlavorIDByNameFollowsPages(t *testing.T) {
 }
 
 func TestListWithLimitIsOnePage(t *testing.T) {
-	srv, requests := pagedServer(t, "/flavors", "flavors", lookupItems, nil)
+	srv, requests := pagedServer(t, "/flavors/detail", "flavors", lookupItems, nil)
 	resp, err := ListFlavors(srv.URL, "tok", map[string]string{"limit": "2"})
 	if err != nil {
 		t.Fatal(err)

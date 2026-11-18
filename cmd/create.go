@@ -284,6 +284,13 @@ func printCreatedImage(imageURL, token, imageID, wantMD5 string) error {
 	return nil
 }
 
+// imageVolumeSize is the size in GB of a volume made from an image: the largest of the
+// requested size, the image's minimum disk and its file size rounded up.
+func imageVolumeSize(requested int, imageBytes int64, minDisk int) int {
+	const gb = 1024 * 1024 * 1024
+	return max(requested, minDisk, int((imageBytes+gb-1)/gb))
+}
+
 // Subcommand: create volume
 var createVolumeCmd = &cobra.Command{
 	Use:     "volume",
@@ -341,14 +348,13 @@ var createVolumeCmd = &cobra.Command{
 				return fmt.Errorf("failed to get image ID: %v", err)
 			}
 
-			imageSize, err := api.GetImageSize(imageURL, tok.Value, imageID)
+			image, err := api.GetImageByID(imageURL, tok.Value, imageID)
 			if err != nil {
 				return fmt.Errorf("failed to get image size: %v", err)
 			}
-			// Round up to nearest GB
-			volumeSize := int((imageSize + 1024*1024*1024 - 1) / (1024 * 1024 * 1024))
+			volumeSize := imageVolumeSize(flagVolumeSize, image.Size, image.MinDisk)
 
-			resp, err := api.CreateVolumeFromImage(storageURL, tok.Value, imageID, flagVolumeName, int64(volumeSize))
+			resp, err := api.CreateVolumeFromImage(storageURL, tok.Value, imageID, flagVolumeName, int64(volumeSize), bootVolumeType(flagVolumeType))
 			if err != nil {
 				return err
 			}
@@ -360,7 +366,7 @@ var createVolumeCmd = &cobra.Command{
 		request.Volume.Name = flagVolumeName
 		request.Volume.Size = flagVolumeSize
 		request.Volume.Description = flagVolumeDescription
-		request.Volume.VolumeType = flagVolumeType
+		request.Volume.VolumeType = bootVolumeType(flagVolumeType)
 
 		resp, err := api.CreateVolume(storageURL, tok.Value, request)
 		if err != nil {
@@ -476,6 +482,8 @@ func init() {
 	createVMCmd.Flags().StringVar(&flagNetworkCSV, "networks", "", "Comma-separated list of network names or UUIDs, or 'none' for a VM without a network interface")
 	createVMCmd.Flags().StringVar(&flagIPCSV, "ips", "", "Comma-separated list of IP addresses ('none' for unmanaged network)")
 	createVMCmd.Flags().IntVar(&flagVMSize, "size", 0, "Size in GB of boot volume")
+	createVMCmd.Flags().StringVar(&flagVMVolume, "volume", "", "Boot from this existing volume (ID or name) instead of an image; the volume is kept when the VM is deleted")
+	createVMCmd.Flags().StringVar(&flagVMVolumeType, "volume-type", "", "Type of the new boot volume, see 'list volume-types' (default: 'volume_type' in config, else "+defaultVolumeType+")")
 	createVMCmd.Flags().BoolVar(&flagVMNetboot, "netboot", false, "Enable network boot with blank volume (deprecated, use --image)")
 	createVMCmd.Flags().StringVar(&flagUserData, "user-data", "", "User script, bash, YAML (file path), use with --ci-data for templating, eg. {{%variable%}}")
 	createVMCmd.Flags().StringVar(&flagMacAddrCSV, "macaddr", "", "Comma-separated list of MAC addresses ('auto' is valid value)")
@@ -492,9 +500,9 @@ func init() {
 
 	// Flags for create volume
 	createVolumeCmd.Flags().StringVar(&flagVolumeName, "name", "", "Name of the volume")
-	createVolumeCmd.Flags().IntVar(&flagVolumeSize, "size", 0, "Size of the volume in GB (not needed when creating from image)")
+	createVolumeCmd.Flags().IntVar(&flagVolumeSize, "size", 0, "Size of the volume in GB (with --image: optional, never below what the image needs)")
 	createVolumeCmd.Flags().StringVar(&flagVolumeDescription, "description", "", "Description of the volume")
-	createVolumeCmd.Flags().StringVar(&flagVolumeType, "type", "nvme_ec7_2", "Type of the volume: nvme_ec7_2, replica3")
+	createVolumeCmd.Flags().StringVar(&flagVolumeType, "type", "", "Type of the volume, see 'list volume-types' (default: 'volume_type' in config, else "+defaultVolumeType+")")
 	createVolumeCmd.Flags().StringVar(&flagVolumeImage, "image", "", "Image ID to create volume from")
 	createVolumeCmd.Flags().StringVar(&flagVolumeSource, "source-volume", "", "Volume ID or name to copy; the source is left as it is")
 

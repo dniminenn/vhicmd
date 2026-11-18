@@ -75,12 +75,12 @@ func TestBuildRecreatePlanUnmanaged(t *testing.T) {
 		t.Errorf("plan = %+v", p)
 	}
 	o := p.CreateOptions(false)
-	want := createVMOptions{Name: "whm2", Flavor: "8vcpu-8GiB", Image: "img-1", Size: 100,
+	want := createVMOptions{Name: "whm2", Flavor: "8vcpu-8GiB", Image: "img-1", Size: 100, VolumeType: "nvme_ec7_2",
 		Networks: "net-ext", IPs: "none", MACs: "fa:16:3e:d8:47:05"}
 	if o != want {
 		t.Errorf("CreateOptions = %+v, want %+v", o, want)
 	}
-	if got := p.CreateCommand(false); got != "vhicmd create vm --name whm2 --flavor 8vcpu-8GiB --image img-1 --size 100 --networks net-ext --ips none --macaddr fa:16:3e:d8:47:05" {
+	if got := p.CreateCommand(false); got != "vhicmd create vm --name whm2 --flavor 8vcpu-8GiB --image img-1 --size 100 --volume-type nvme_ec7_2 --networks net-ext --ips none --macaddr fa:16:3e:d8:47:05" {
 		t.Errorf("CreateCommand = %q", got)
 	}
 	if o := p.CreateOptions(true); o.Ports != "port-1" || o.Networks != "" || o.IPs != "" || o.MACs != "" {

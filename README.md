@@ -111,6 +111,7 @@ Configuration Options:
 - `networks`: Default networks for VM creation (CSV, optional)
 - `flavor_id`: Default flavor for VM creation (optional)
 - `image_id`: Default image for VM creation (optional)
+- `volume_type`: Default volume type for new volumes and boot volumes (optional, default `nvme_ec7_2`)
 - `app_cred_id`, `app_cred_secret`: Application credential (API key), replaces username/password
 - `app_cred_file`: Path to a yaml file with `id` and `secret`, alternative to the two keys above
 - `timeout`: Per-request timeout in seconds (optional, default 120)
@@ -172,12 +173,13 @@ vhicmd list domains              # Admin only
 vhicmd list projects
 vhicmd list vms [--name filter]                                        # Shows IPs and power state
 vhicmd list volumes
+vhicmd list volume-types         # Storage policies for --type and --volume-type
 vhicmd list snapshots [--volume <volume-id|name>]
 vhicmd list networks [--name filter]
 vhicmd list ports [--status DOWN] [--name filter] [--mac-address addr] [--device-id vm-id]  # Shows all ports by default
 vhicmd list security-groups
 vhicmd list floating-ips
-vhicmd list flavors
+vhicmd list flavors              # With vCPUs, RAM and disk; --json has every field
 vhicmd list images [--name filter] [--visibility public|private|shared]
 vhicmd list image-members <image>
 ```
@@ -187,6 +189,7 @@ Get detailed information:
 vhicmd details vm <vm-id>                # Also lists each port's security groups, port security, IPs and allowed address pairs
 vhicmd details vm <vm-id> --user-data    # Also prints the VM's user data, decoded
 vhicmd details volume <volume-id>
+vhicmd details flavor <flavor-id|name>   # vCPUs, RAM, disk, swap and extra specs
 vhicmd details snapshot <snapshot-id>
 vhicmd details image <image-id>
 vhicmd details port <port-id>
@@ -265,6 +268,17 @@ vhicmd create vm --name <name> \
 Without any network interface (reach it with `vhicmd console`):
 ```bash
 vhicmd create vm --name <name> --flavor <flavor-id> --image <image-id> --networks none
+```
+
+The boot volume is created with `--volume-type`, else `volume_type` from the config, else `nvme_ec7_2`:
+```bash
+vhicmd create vm --name <name> --flavor <flavor-id> --image <image-id> --volume-type <type> ...
+```
+
+Boot from an existing volume instead of an image. The volume must be available and bootable; it
+keeps its size and type, and it is kept when the VM is deleted:
+```bash
+vhicmd create vm --name <name> --flavor <flavor-id> --volume <volume-id|name> --networks <network-ids> --ips <ip-addresses>
 ```
 
 With templates (inline variables):
@@ -407,6 +421,10 @@ vhicmd create volume --name <name> \
   --size <size-GB> \
   --type <volume-type> \
   --description <description>
+```
+From an image; the size is at least what the image needs, and the volume is bootable:
+```bash
+vhicmd create volume --name <name> --image <image-id|name> [--size <size-GB>] [--type <volume-type>]
 ```
 Copy a volume, attached or not; the source is left as it is:
 ```bash
